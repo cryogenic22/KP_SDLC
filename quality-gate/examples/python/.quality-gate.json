@@ -1,0 +1,16 @@
+{
+  "name": "Quality Gate (Python Repo)",
+  "paths": {
+    "include": [],
+    "extensions": [".py"],
+    "exclude": ["**/.venv*/**", "**/venv*/**", "**/__pycache__/**", "**/.pytest_cache/**"]
+  },
+  "prs": { "enabled": true, "min_score": 85 },
+  "rules": {
+    "file_size": { "max_lines": 800, "warning_lines": 500, "severity": "warning" },
+    "no_debug_statements": { "severity": "warning", "patterns": { "python": ["breakpoint()", "pdb.set_trace", "import pdb"] } },
+    "no_type_escape": { "severity": "warning", "patterns": { "python": ["# type: ignore"] } }
+  },
+  "thresholds": { "error_count": 0, "warning_count": 50 }
+}
+

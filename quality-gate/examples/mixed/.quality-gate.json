@@ -1,0 +1,16 @@
+{
+  "name": "Quality Gate (Mixed Repo)",
+  "paths": {
+    "include": [],
+    "extensions": [".py", ".ts", ".tsx", ".js", ".jsx"],
+    "exclude": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.venv*/**", "**/venv*/**"]
+  },
+  "prs": { "enabled": true, "min_score": 85 },
+  "rules": {
+    "file_size": { "max_lines": 800, "warning_lines": 500, "severity": "warning" },
+    "no_silent_catch": { "severity": "error" },
+    "no_hardcoded_secrets": { "severity": "error" }
+  },
+  "thresholds": { "error_count": 0, "warning_count": 50 }
+}
+

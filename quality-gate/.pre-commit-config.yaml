@@ -1,0 +1,35 @@
+# Quality Gate Pre-Commit Hooks (Offline-Friendly)
+# ================================================
+# Copy this file to your repo root as `.pre-commit-config.yaml`, then run:
+#   pre-commit install
+#
+# This config is intentionally "local-only" (no network hook repos) so it can run
+# in restricted environments. Add your own lint/test hooks as needed.
+
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: quality-gate
+        name: Quality Gate (PRS >= 85)
+        entry: python quality-gate/quality_gate.py --staged
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: quality-gate-strict
+        name: Quality Gate (Strict)
+        entry: python quality-gate/quality_gate.py --strict
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: commit-msg-format
+        name: Commit Message Format
+        entry: python quality-gate/check_commit_msg.py
+        language: system
+        stages: [commit-msg]
+        pass_filenames: true
+        always_run: true

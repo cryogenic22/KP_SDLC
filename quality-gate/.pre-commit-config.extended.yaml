@@ -1,0 +1,99 @@
+# Quality Gate Pre-Commit Hooks (Extended - Network + Tooling Required)
+# ================================================================
+# This variant includes additional lint/format/safety hooks beyond the portable
+# PRS Quality Gate. It requires:
+# - Network access (first-time `pre-commit install` fetches hook repos)
+# - The relevant toolchains available in your repo (Node for eslint/tsc, etc.)
+#
+# If you need an offline-friendly config, use:
+#   `quality-gate/.pre-commit-config.yaml`
+
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  # ============================================================================
+  # QUALITY GATE (PRS)
+  # ============================================================================
+  - repo: local
+    hooks:
+      - id: quality-gate
+        name: Quality Gate (PRS >= 85)
+        entry: python quality-gate/quality_gate.py --staged
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: quality-gate-strict
+        name: Quality Gate (Strict)
+        entry: python quality-gate/quality_gate.py --strict
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: commit-msg-format
+        name: Commit Message Format
+        entry: python quality-gate/check_commit_msg.py
+        language: system
+        stages: [commit-msg]
+        pass_filenames: true
+        always_run: true
+
+  # ============================================================================
+  # STANDARD HOOKS (Network)
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+        exclude: "\\.min\\.(js|css)$"
+      - id: trailing-whitespace
+        exclude: "\\.min\\.(js|css)$"
+      - id: check-yaml
+        args: ["--unsafe"]
+      - id: check-json
+      - id: check-toml
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "master"]
+      - id: detect-private-key
+
+  # ============================================================================
+  # TYPESCRIPT/JAVASCRIPT (Local - requires Node deps)
+  # ============================================================================
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint (fix)
+        entry: npx eslint --fix
+        language: system
+        types: [javascript, jsx, ts, tsx]
+        pass_filenames: true
+
+      - id: typescript-check
+        name: TypeScript Check
+        entry: npx tsc --noEmit
+        language: system
+        pass_filenames: false
+        types: [ts, tsx]
+
+  # ============================================================================
+  # PYTHON (Network - ruff/mypy hook repos)
+  # ============================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies: ["types-all"]
+        args: ["--ignore-missing-imports"]
+

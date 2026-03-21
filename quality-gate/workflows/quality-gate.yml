@@ -1,0 +1,68 @@
+# Quality Gate CI Workflow (Portable)
+# ===================================
+# Copy this file to `.github/workflows/quality-gate.yml`.
+#
+# This workflow enforces PRS on changed files only (fast, avoids legacy debt).
+
+name: Quality Gate
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================================================
+  # QUALITY GATE
+  # ============================================================================
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for file change detection
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Compute changed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          head="${{ github.sha }}"
+          git diff --name-only --diff-filter=ACMR "$base" "$head" > .quality-gate.changed.txt
+          echo "Changed files:"
+          cat .quality-gate.changed.txt || true
+
+      - name: Run Quality Gate (changed files)
+        run: |
+          set -euo pipefail
+          python quality-gate/quality_gate.py --root . --paths-from .quality-gate.changed.txt --json > .quality-gate.report.json
+          python quality-gate/quality_gate.py --root . --paths-from .quality-gate.changed.txt --verbose
+
+      - name: Upload Quality Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: .quality-gate.report.json

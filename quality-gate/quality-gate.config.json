@@ -1,0 +1,618 @@
+{
+  "version": "1.0.0",
+  "name": "Quality Gate (Portable Defaults)",
+  "description": "Drop-in quality gates with PRS scoring. Override per repo via .quality-gate.json at the repo root.",
+
+  "paths": {
+    "include": [],
+    "extensions": [".py", ".ts", ".tsx", ".js", ".jsx"],
+    "exclude": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+      "**/.git/**",
+      "**/__pycache__/**",
+      "**/.pytest_cache/**",
+      "**/.venv/**",
+      "**/.venv*/**",
+      "**/venv/**",
+      "**/venv*/**",
+      "**/site-packages/**",
+      "**/.quality-reports/**",
+      "**/coverage/**"
+    ]
+  },
+
+  "prs": {
+    "enabled": true,
+    "min_score": 85,
+    "error_weight": 10,
+    "warning_weight": 2,
+    "_note": "PRS = 100 - (errors*10) - (warnings*2). Files below min_score are blocked."
+  },
+
+  "rules": {
+    "file_size": {
+      "enabled": true,
+      "severity": "error",
+      "max_lines": 800,
+      "warning_lines": 500,
+      "exceptions": ["**/*.generated.*", "**/schemas.*", "**/models.*"]
+    },
+    "function_size": {"enabled": true, "severity": "error", "max_lines": 50, "warning_lines": 30},
+    "no_todo_fixme": {
+      "enabled": true,
+      "severity": "error",
+      "patterns": ["TODO", "FIXME", "XXX", "HACK", "BUG"],
+      "allow_with_issue": true,
+      "issue_pattern": "(TODO|FIXME)\\s*\\(#\\d+\\)"
+    },
+    "no_debug_statements": {
+      "enabled": true,
+      "severity": "warning",
+      "patterns": {
+        "javascript": ["console.log", "console.debug", "debugger"],
+        "typescript": ["console.log", "console.debug", "debugger"],
+        "python": ["breakpoint()", "pdb.set_trace", "import pdb"]
+      },
+      "exceptions": ["console.error", "console.info", "console.warn", "logger."]
+    },
+    "no_type_escape": {
+      "enabled": true,
+      "severity": "warning",
+      "patterns": {"typescript": ["@ts-ignore", "@ts-nocheck"], "python": ["# type: ignore"]}
+    },
+    "no_silent_catch": {
+      "enabled": true,
+      "severity": "error",
+      "patterns": {
+        "python": ["except.*:\\s*pass", "except Exception:\\s*pass", "except:\\s*pass"],
+        "javascript": ["catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"],
+        "typescript": ["catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"]
+      }
+    },
+    "no_hardcoded_secrets": {
+      "enabled": true,
+      "severity": "error",
+      "patterns": [
+        "password\\s*=\\s*['\"][^'\"]+['\"]",
+        "api_key\\s*=\\s*['\"][^'\"]+['\"]",
+        "secret\\s*=\\s*['\"][^'\"]+['\"]",
+        "token\\s*=\\s*['\"][A-Za-z0-9]{20,}['\"]",
+        "-----BEGIN (RSA |EC )?PRIVATE KEY-----"
+      ],
+      "exceptions": ["password=''", "password=\"\"", "test", "example", "placeholder"]
+    },
+    "no_duplicate_code": {"enabled": true, "severity": "warning"},
+    "max_complexity": {"enabled": true, "severity": "warning", "cyclomatic_max": 10},
+
+    "mutable_default": {"enabled": false, "severity": "error"},
+    "bare_except": {"enabled": false, "severity": "error"},
+    "sql_injection": {"enabled": false, "severity": "warning"},
+    "command_injection": {"enabled": false, "severity": "error"},
+
+    "no_eval": {"enabled": false, "severity": "error"},
+    "dangerously_set_html": {"enabled": false, "severity": "error", "exceptions": []},
+
+    "missing_test_assertion": {"enabled": false, "severity": "info"},
+    "test_isolation": {"enabled": false, "severity": "info"},
+    "test_naming": {"enabled": false, "severity": "info"},
+
+    "no_var": {"enabled": false, "severity": "error"},
+    "parameter_count": {"enabled": false, "severity": "warning", "max_parameters": 5},
+    "nesting_depth": {"enabled": false, "severity": "warning", "max_depth": 4},
+
+    "react_hooks_rules": {"enabled": false, "severity": "info"},
+    "missing_key_prop": {"enabled": false, "severity": "info"},
+
+    "dataclass_field_count": {"enabled": false, "severity": "info", "max_fields": 20},
+    "excessive_cast": {"enabled": false, "severity": "info", "max_casts": 12},
+
+    "_comment_python_pack": "=== Python Pack (migrated from Cathedral Keeper) ===",
+    "missing_requests_timeout": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "requests.get/post/put/delete/patch/head() calls without timeout=. Can hang workers indefinitely."
+    },
+    "syspath_manipulation": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "sys.path.append/insert/extend calls. Prefer proper packaging or module layout.",
+      "exempt_files": ["conftest.py", "setup.py", "setup.cfg", "manage.py"]
+    },
+    "mutable_default_argument": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Mutable or call-time defaults ([], {}, datetime.now(), uuid4()) in function definitions."
+    },
+    "cursor_double_consume": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Same cursor consumed twice (.one(), .fetchone() x2). Second call returns None or raises."
+    },
+    "empty_context_manager_exit": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "__exit__ method body is only pass or empty. Resources from __enter__ never cleaned up."
+    },
+
+    "_comment_fastapi_pack": "=== FastAPI Pack ===",
+    "sync_endpoint_with_io": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Synchronous FastAPI route handlers performing blocking I/O. Blocks the event loop under load."
+    },
+    "missing_response_model": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Route handler without response_model or return type annotation. API contract undocumented."
+    },
+    "dependency_creates_resource": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Depends() function creating heavy resources (engines, clients) per-request. Causes pool exhaustion."
+    },
+    "unvalidated_parameters": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Path/Query params with suggestive names (id, page, limit) but no Field constraints."
+    },
+    "bare_exception_in_route": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Broad except in route handler without logging or re-raise. Invisible failures in production."
+    },
+    "missing_cors_config": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "FastAPI app without CORSMiddleware. Frontend requests blocked. Wildcard origins flagged as error."
+    },
+    "error_response_as_200": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Flask-style tuple return (dict, status) in FastAPI route. Status code ignored, sends 200."
+    },
+    "missing_auth_middleware": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Route handler without auth dependency. Publicly accessible endpoint.",
+      "exempt_routes": ["health", "healthz", "health_check", "ready", "readyz", "ping", "root", "docs", "redoc", "openapi", "login", "signup", "register", "callback"]
+    },
+    "discarded_query_result": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "DB query expression without assignment or return. Query result silently discarded."
+    },
+
+    "_comment_langchain_pack": "=== LangChain / LangGraph Pack ===",
+    "unbounded_graph_execution": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "StateGraph.compile() without recursion_limit or AgentExecutor without max_iterations. Infinite loops burn tokens."
+    },
+    "missing_callbacks": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": ".invoke/.stream calls without callbacks parameter. No production observability."
+    },
+    "hardcoded_model_name": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM class instantiated with string literal model name. Cannot switch models without code change."
+    },
+    "missing_retry_fallback": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM invocation without .with_retry() or .with_fallback(). Transient failures crash the app."
+    },
+    "unstructured_output_parsing": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM output parsed with .split()/.strip()/regex instead of .with_structured_output() or PydanticOutputParser."
+    },
+    "missing_token_tracking": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "LLM calls without token/cost tracking (get_openai_callback, LangSmith, etc.). Cost visibility missing."
+    },
+    "prompt_injection_vector": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "f-string or .format() in PromptTemplate/ChatPromptTemplate. Prompt injection vulnerability."
+    },
+
+    "_comment_ai_smells_pack": "=== AI Code Smells Pack ===",
+    "dead_variable": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Variable assigned but never read in function scope. Common in AI-generated code."
+    },
+    "nested_enumeration": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Nested for-loop over static collection. O(n²) when an index/set lookup would be O(n)."
+    },
+    "linear_search_in_loop": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "'if x in list' inside loop. O(m×n) — convert list to set for O(1) lookups."
+    },
+    "redundant_recomputation": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Same function call with identical args repeated in function. Compute once and reuse."
+    },
+    "dead_parameters": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Function parameter never referenced in body. Indicates incomplete refactoring."
+    },
+
+    "_comment_neo4j_pack": "=== Neo4j Pack ===",
+    "unbounded_cypher_query": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "MATCH/RETURN without LIMIT. Unbounded query can exhaust database memory."
+    },
+    "cypher_cartesian_product": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Disconnected MATCH patterns create explosive cartesian products."
+    },
+    "cypher_string_interpolation": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "f-string or .format() in Cypher query. Cypher injection risk."
+    },
+    "sync_neo4j_in_async": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Synchronous neo4j.GraphDatabase in file with async functions. Blocks event loop."
+    },
+    "missing_write_transaction": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Write Cypher via session.run() bypasses automatic retry. Use execute_write()."
+    },
+    "session_not_closed": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "driver.session() without context manager. Leaks connections."
+    },
+
+    "_comment_mongodb_pack": "=== MongoDB Pack ===",
+    "unbounded_find": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": ".find() without .limit(). Can exhaust memory on large collections."
+    },
+    "pymongo_in_async": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Synchronous pymongo in async context. Use motor.motor_asyncio instead."
+    },
+    "missing_projection": {
+      "enabled": true,
+      "severity": "info",
+      "_description": ".find()/.find_one() without projection. Fetches all fields unnecessarily."
+    },
+    "unbounded_array_push": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "$push without $slice. Array grows unbounded toward 16MB document limit."
+    },
+
+    "_comment_databases_pack": "=== Cross-Cutting Database Pack ===",
+    "connection_string_in_code": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Hardcoded database connection URI in source code. Use environment variables."
+    },
+    "per_request_connection": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "DB client/connection created inside route handler. Pool exhaustion risk."
+    },
+    "missing_connection_retry": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Database connection init without retry or error handling."
+    },
+    "mixed_sync_async_drivers": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Both sync and async database drivers in same file. Architectural inconsistency."
+    },
+    "missing_health_check": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "FastAPI app with database but no /health endpoint for connectivity checks."
+    },
+
+    "_comment_performance_pack": "=== Performance Pack ===",
+    "db_call_in_loop": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Database query inside for loop. N+1 pattern — use batch query instead."
+    },
+    "missing_pagination": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Route handler returns DB results without limit/offset pagination parameters."
+    },
+    "ssrf_potential": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "User-supplied URL passed to HTTP client without validation. SSRF risk."
+    },
+    "nested_collection_iteration": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Nested for-loops over collections. O(n*m) complexity degrades with data size."
+    },
+    "string_concat_in_loop": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "String += inside loop. Quadratic memory allocation — use list + join."
+    },
+    "regex_compile_in_loop": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "re.search/match/sub called inside loop. Pattern recompiled each iteration."
+    },
+    "unbounded_polling_loop": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "while True with HTTP/sleep calls but no retry counter. Infinite loop risk."
+    },
+    "large_response_materialization": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "list(query) or .all() in route handler without pagination. Loads entire dataset into memory."
+    },
+
+    "_comment_sqlalchemy_pack": "=== SQLAlchemy Pack ===",
+    "sync_session_in_async": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Synchronous sqlalchemy Session in file with async functions. Use AsyncSession."
+    },
+    "missing_pool_config": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "create_engine() without pool_size/max_overflow/pool_pre_ping."
+    },
+    "raw_sql_preference": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "session.execute(text(...)) for standard CRUD. Consider ORM query builder."
+    },
+    "n_plus_one_signal": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "DB query call inside loop over query results. N+1 query pattern."
+    },
+    "missing_alembic": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "SQLAlchemy models defined but no alembic/ directory. Schema migrations not tracked."
+    },
+    "sync_orm_in_async_handler": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Synchronous ORM calls (.commit, .execute, .query) inside async functions. Blocks event loop."
+    },
+    "unsafe_module_singleton": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Module-level class instance with mutable state (self.cache={}). Thread-unsafe under concurrent load."
+    },
+
+    "_comment_docparse_pack": "=== Document Parsing Pack ===",
+    "missing_confidence_filter": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Parsing results used without confidence threshold check. Silent incorrect data."
+    },
+    "unbounded_document_processing": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Document parsing API called without file size validation. Cost and latency risk."
+    },
+    "sync_parsing_in_handler": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Long-running document parsing directly in HTTP route handler."
+    },
+    "missing_parse_cache": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "Document parsing without caching. Re-parsing identical documents wastes money."
+    },
+
+    "_comment_nextjs_pack": "=== Next.js / React Pack ===",
+    "useeffect_dependency_array": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "useEffect with missing or empty dependency array. Causes stale closures or infinite re-renders."
+    },
+    "server_client_boundary": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Client hooks (useState, useEffect) in server component without 'use client' directive."
+    },
+    "missing_error_boundary": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "page.tsx without error.tsx. Component errors show blank screen."
+    },
+    "unoptimised_images": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Raw <img> tag in Next.js app. Use next/image <Image> for optimisation."
+    },
+
+    "_comment_security_pack": "=== Security Enhancements ===",
+    "env_variable_exposure": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "os.environ logged, printed, or returned. Exposes secrets."
+    },
+    "missing_rate_limiting": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "FastAPI app without rate limiting. WARNING for AI-powered APIs."
+    },
+    "secret_in_env_default": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "os.getenv('SECRET', 'real-value') — live secrets as fallback defaults. Persists in git history."
+    },
+    "empty_security_config": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "SECRET_KEY = '' or JWT_SECRET = ''. Empty security keys effectively disable security."
+    },
+    "sql_string_interpolation": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "SQL query built with f-string or .format() — SQL injection risk."
+    },
+    "sensitive_data_in_logs": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Variables named token/secret/password passed to logging or print calls."
+    },
+    "client_exposed_secret": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "NEXT_PUBLIC_/REACT_APP_/VITE_ variables containing SECRET/KEY/PASSWORD. Bundled into client JS."
+    },
+
+    "_comment_ai_smells_phase4": "=== AI Code Smells Phase 4 ===",
+    "excessive_defensive_checks": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "Function where >30% of statements are isinstance/hasattr/None checks."
+    },
+    "over_abstraction": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "ABC/Protocol with only one concrete subclass. Unnecessary indirection."
+    },
+    "redundant_containment_check": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "Containment checks in bottom-up tree processing. Already-assigned items rechecked."
+    },
+    "code_to_complexity_ratio": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "Module with >5:1 private-to-public function ratio or >200 lines per public function."
+    },
+
+    "_comment_observability_pack": "=== Observability & Telemetry Pack ===",
+    "missing_structured_logging": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "print() used for logging (3+ calls) instead of logging/structlog. Not queryable or filterable."
+    },
+    "missing_request_tracing": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "FastAPI app without request_id/correlation_id middleware. Cannot correlate errors across services."
+    },
+    "missing_error_telemetry": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Exception handler without logging or error telemetry. Errors invisible in monitoring."
+    },
+    "missing_health_endpoint": {
+      "enabled": true,
+      "severity": "info",
+      "_description": "FastAPI app without /health or /healthz route. Load balancers cannot probe service health."
+    },
+
+    "_comment_ux_errors_pack": "=== UX Error Handling Pack ===",
+    "generic_error_response": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Route returning generic error dict without error_code/status. UI gets no actionable info."
+    },
+    "missing_error_boundary_ux": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "React component file without ErrorBoundary. Render errors crash entire component tree."
+    },
+    "unhandled_promise_rejection": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": ".then() without .catch(), async handler without try/catch. Silent UI failures."
+    },
+
+    "_comment_ai_llm": "=== AI/LLM-Specific Quality Rules ===",
+    "missing_await": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Async LLM/API calls (openai, anthropic, aiohttp) that are missing await. Returns coroutine instead of result."
+    },
+    "llm_timeout": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM API calls without explicit timeout. Can hang indefinitely causing production issues."
+    },
+    "llm_retry": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM calls without retry mechanism (tenacity/backoff). Transient failures will crash the app."
+    },
+    "unbounded_tokens": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM calls without max_tokens limit. Response length unbounded, unpredictable cost."
+    },
+    "prompt_injection_risk": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "User input directly interpolated into prompts via f-strings. Prompt injection vulnerability."
+    },
+    "blocking_in_async": {
+      "enabled": true,
+      "severity": "error",
+      "_description": "Blocking calls (time.sleep, requests.get, open) inside async functions. Blocks event loop."
+    },
+    "llm_response_handling": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "LLM API calls without try/except. API errors crash the application."
+    },
+    "rate_limit_handling": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Files using LLM APIs without 429/RateLimitError handling. Will fail under load."
+    },
+    "hardcoded_model": {
+      "enabled": false,
+      "severity": "warning",
+      "_description": "Hardcoded LLM model names (gpt-4, claude-3). Should be configurable for updates/testing."
+    },
+    "graceful_degradation": {
+      "enabled": false,
+      "severity": "warning",
+      "_description": "LLM-dependent code without fallback behavior. Features fail completely when LLM unavailable."
+    },
+    "json_response_validation": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "JSON parsing of LLM responses without schema validation (Pydantic). Malformed JSON crashes app."
+    },
+    "large_prompt_handling": {
+      "enabled": true,
+      "severity": "warning",
+      "_description": "Unbounded file/document content sent to LLM without chunking. Token limit exceeded errors."
+    }
+  },
+
+  "thresholds": {"error_count": 0, "warning_count": 50}
+}

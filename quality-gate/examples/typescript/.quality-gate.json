@@ -1,0 +1,20 @@
+{
+  "name": "Quality Gate (TypeScript Repo)",
+  "paths": {
+    "include": [],
+    "extensions": [".ts", ".tsx", ".js", ".jsx"],
+    "exclude": ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.next/**"]
+  },
+  "prs": { "enabled": true, "min_score": 85 },
+  "rules": {
+    "file_size": { "max_lines": 800, "warning_lines": 500, "severity": "warning" },
+    "no_debug_statements": {
+      "severity": "warning",
+      "patterns": { "typescript": ["console.log", "console.debug", "debugger"], "javascript": ["console.log", "console.debug", "debugger"] },
+      "exceptions": ["console.error", "console.warn", "console.info"]
+    },
+    "no_type_escape": { "severity": "error", "patterns": { "typescript": ["@ts-ignore", "@ts-nocheck"] } }
+  },
+  "thresholds": { "error_count": 0, "warning_count": 50 }
+}
+

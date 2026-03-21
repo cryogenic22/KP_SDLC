@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment
+.venv/
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Quality reports (generated output — not source code)
+.quality-reports/
+
+# SQLite graph cache
+.cathedral-keeper/graph.db
+
+# Claude Code
+.claude/
+
+# Temp
+*.tmp
+*.bak
