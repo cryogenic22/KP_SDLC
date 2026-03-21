@@ -85,6 +85,19 @@ except Exception:  # pragma: no cover
     check_observability_patterns = None  # type: ignore[assignment]
     check_ux_error_patterns = None  # type: ignore[assignment]
 
+try:  # Phase 4 packs (agentic AI safety)
+    from qg.checks_agent_loops import check_agent_loop_safety
+    from qg.checks_llm_output_safety import check_llm_output_safety
+except Exception:  # pragma: no cover
+    check_agent_loop_safety = None  # type: ignore[assignment]
+    check_llm_output_safety = None  # type: ignore[assignment]
+
+try:  # PRS veto engine
+    from qg.prs_engine import should_veto, compute_bprs, DEFAULT_VETO_RULES
+    HAS_PRS_VETO = True
+except Exception:  # pragma: no cover
+    HAS_PRS_VETO = False
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -1289,6 +1302,22 @@ class QualityGate:
                     add_issue=_add_issue_bridge,
                 )
 
+            # Phase 4 packs (agentic AI safety)
+            if check_agent_loop_safety is not None:
+                check_agent_loop_safety(
+                    file_path=file_path,
+                    content=content,
+                    lines=lines,
+                    add_issue=_add_issue_bridge,
+                )
+            if check_llm_output_safety is not None:
+                check_llm_output_safety(
+                    file_path=file_path,
+                    content=content,
+                    lines=lines,
+                    add_issue=_add_issue_bridge,
+                )
+
     def run(self, paths: list[str] | None = None, staged_only: bool = False) -> CheckResult:
         """Run quality gate checks."""
         files = self.get_files_to_check(paths, staged_only)
@@ -1340,21 +1369,40 @@ class QualityGate:
                 c = counts.get(rel, {"errors": 0, "warnings": 0})
                 score = 100.0 - (c["errors"] * error_weight) - (c["warnings"] * warning_weight)
                 score = max(0.0, min(100.0, score))
+
+                # PRS veto: CRITICAL findings or security rules → VETOED
+                vetoed = False
+                if HAS_PRS_VETO:
+                    file_issues = [i for i in self.issues if i.file == rel and i.rule != "prs_score"]
+                    vetoed = should_veto(
+                        rule_severities=[i.severity.value for i in file_issues],
+                        rule_names=[i.rule for i in file_issues],
+                    )
+
+                if vetoed:
+                    display = "VETOED"
+                    score = 0.0
+                else:
+                    display = str(round(score, 1))
+
                 self.file_prs[rel] = {
                     "score": round(score, 1),
+                    "display_score": display,
                     "min_score": min_score,
                     "errors": int(c["errors"]),
                     "warnings": int(c["warnings"]),
+                    "vetoed": vetoed,
                 }
-                if score < float(min_score):
+                if vetoed or score < float(min_score):
                     prs_failed += 1
+                    label = f"PRS VETOED (critical/security finding)" if vetoed else f"PRS {score:.1f}/100 below minimum {min_score}."
                     self._add_issue(
                         file=rel,
                         line=1,
                         rule="prs_score",
                         severity=Severity.ERROR,
-                        message=f"PRS {score:.1f}/100 below minimum {min_score}.",
-                        suggestion="Fix errors/warnings in this file; split large functions/files; remove debug/todos; improve error handling.",
+                        message=label,
+                        suggestion="Fix critical/security findings first." if vetoed else "Fix errors/warnings in this file; split large functions/files; remove debug/todos; improve error handling.",
                     )
 
             self.stats["prs_files_scored"] = len(self.file_prs)
