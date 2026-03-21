@@ -21,17 +21,36 @@ from pathlib import Path
 from typing import Callable, List
 
 
-# Patterns that indicate an LLM call (function names containing these)
+# Two-tier LLM detection:
+# Tier 1: Explicit LLM API calls (known object prefixes)
+_LLM_OBJ = (
+    r"(?:llm|model|client|chain|agent|openai|anthropic|bedrock|"
+    r"chat|completion_api|langchain|crew|llm_service|llm_client|"
+    r"llm_chain|llm_model|ai_client|genai|graph|workflow|pipeline)"
+)
 _LLM_CALL_PATTERNS = re.compile(
-    r"\b(?:completions?\.create|chat\.completions|\.invoke|\.generate|"
-    r"\.predict|\.run|\.complete|\.agenerate|\.ainvoke|llm\(|"
-    r"chain\(|generate_\w+\(|completion\()"
+    rf"\b(?:completions?\.create|chat\.completions|"
+    rf"{_LLM_OBJ}\.(?:invoke|generate|predict|complete|run|ainvoke|"
+    rf"agenerate|create|get_text_response|get_response|call|acall|"
+    rf"get_text_response_async)|"
+    r"llm\(|chain\()"
+)
+
+# Tier 2: Variable names that strongly suggest LLM output.
+# Used to detect json.loads(llm_response) even when the LLM call
+# is in a different function / service layer (common in enterprise code).
+_LLM_VAR_NAMES = re.compile(
+    r"\b(?:llm_response|llm_output|llm_result|ai_response|"
+    r"completion_result|model_response|model_output|"
+    r"generated_text|generation_result)\b"
 )
 
 # Patterns for variable assignment from LLM
 _LLM_ASSIGN = re.compile(
-    r"^\s*(\w+)\s*=\s*.*(?:completions?\.create|\.invoke|\.generate|\.predict|"
-    r"\.run|\.complete|chain\.\w+|llm\.\w+|generate_\w+|completion\()"
+    rf"^\s*(\w+)\s*=\s*.*(?:completions?\.create|"
+    rf"{_LLM_OBJ}\.(?:invoke|ainvoke|generate|predict|complete|run|create|"
+    rf"get_text_response|get_text_response_async|get_response)|"
+    r"llm\(|chain\()"
 )
 
 
@@ -43,8 +62,10 @@ def check_llm_output_safety(
     add_issue: Callable,
 ) -> None:
     """Run all LLM-Output-Safety checks on a file."""
-    if not _LLM_CALL_PATTERNS.search(content):
-        return  # No LLM calls in this file — skip
+    has_llm_calls = _LLM_CALL_PATTERNS.search(content)
+    has_llm_vars = _LLM_VAR_NAMES.search(content)
+    if not has_llm_calls and not has_llm_vars:
+        return  # No LLM calls or LLM variables in this file — skip
 
     _check_unvalidated_json(lines=lines, add_issue=add_issue)
     _check_direct_eval(lines=lines, content=content, add_issue=add_issue)
@@ -90,10 +111,10 @@ def _check_direct_eval(*, lines: List[str], content: str, add_issue: Callable) -
     for i, line in enumerate(lines):
         stripped = line.strip()
         if "eval(" in stripped:
-            # Check surrounding context for LLM variables
+            # Check surrounding context for LLM calls or LLM variable names
             context_start = max(0, i - 10)
             context = "\n".join(lines[context_start:i + 1])
-            if _LLM_CALL_PATTERNS.search(context):
+            if _LLM_CALL_PATTERNS.search(context) or _LLM_VAR_NAMES.search(context):
                 add_issue(
                     line=i + 1,
                     rule="LLM-PY-DIRECT-EVAL",
@@ -116,8 +137,8 @@ def _check_silent_fallback(*, lines: List[str], content: str, add_issue: Callabl
         # Check if this line or nearby lines involve LLM output
         context_start = max(0, i - 5)
         context = "\n".join(lines[context_start:i + 1])
-        if _LLM_CALL_PATTERNS.search(context) or any(
-            kw in line for kw in ["response", "result", "output", "generate", "invoke"]
+        if _LLM_CALL_PATTERNS.search(context) or _LLM_VAR_NAMES.search(context) or any(
+            kw in line for kw in ["response", "result", "output", "invoke"]
         ):
             fallback_val = match.group(1)
             add_issue(

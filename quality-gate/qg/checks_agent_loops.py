@@ -17,10 +17,16 @@ from pathlib import Path
 from typing import Callable, List
 
 
-# Patterns that indicate an LLM call
+# Patterns that indicate an LLM call — require known LLM object prefixes
+# to avoid matching local functions like generate_html(), task.complete(), etc.
 _LLM_CALL = re.compile(
-    r"\b(?:\.invoke|\.generate|\.predict|\.complete|\.ainvoke|\.agenerate|"
-    r"completions?\.create|llm\(|chain\(|llm\.\w+|chain\.\w+)"
+    r"\b(?:(?:llm|model|client|chain|agent|openai|anthropic|bedrock|"
+    r"chat|completion_api|langchain|crew|llm_service|llm_client|"
+    r"llm_chain|ai_client|genai|graph|workflow|pipeline)\."
+    r"(?:invoke|generate|predict|complete|ainvoke|agenerate|run|create|"
+    r"get_text_response|get_text_response_async|get_response|call|acall)|"
+    r"completions?\.create|ChatCompletion\.create|"
+    r"llm\(|chain\()"
 )
 
 # Patterns indicating iteration bounds

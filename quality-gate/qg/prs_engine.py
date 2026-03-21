@@ -32,12 +32,13 @@ class PrsResult:
         return f"{self.score}"
 
 
-# Default rules that trigger hard veto (security + critical agentic)
+# Default rules that trigger hard veto (high-confidence security only).
+# Excluded: sql_string_interpolation (heuristic, fires on HTML templates),
+# no_hardcoded_secrets (regex-based, fires on hex color constants).
+# These are kept as errors but don't warrant categorical veto.
 DEFAULT_VETO_RULES: Set[str] = {
     "sql_injection",
-    "sql_string_interpolation",
     "command_injection",
-    "no_hardcoded_secrets",
     "LLM-PY-DIRECT-EVAL",
     "PROMPT-PY-INJECTION-VECTOR",
     "LOOP-PY-WHILE-TRUE-LLM",

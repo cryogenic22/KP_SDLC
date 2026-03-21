@@ -82,7 +82,7 @@ result = response.get("output") or {}
 def test_flags_or_empty_list_fallback():
     """`or []` on LLM output → WARNING."""
     code = '''
-items = generate_items(prompt) or []
+items = chain.invoke(prompt) or []
 '''
     issues = _run(code)
     assert any(i["rule"] == "LLM-PY-SILENT-FALLBACK" for i in issues)

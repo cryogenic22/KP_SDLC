@@ -44,6 +44,12 @@ def test_no_veto_on_non_security_rules():
     assert should_veto(rule_names=["function_size"], veto_rules=veto_rules) is False
 
 
+def test_no_veto_on_heuristic_rules():
+    """Heuristic rules (sql_string_interpolation, no_hardcoded_secrets) should NOT veto by default."""
+    assert should_veto(rule_names=["sql_string_interpolation"]) is False
+    assert should_veto(rule_names=["no_hardcoded_secrets"]) is False
+
+
 def test_veto_result_shows_vetoed():
     """Vetoed file should show score='VETOED', not a number."""
     result = compute_prs(errors=1, warnings=0, vetoed=True)
