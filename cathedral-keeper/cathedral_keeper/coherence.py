@@ -35,6 +35,7 @@ def check_coherence(
             - suspiciously_clean_file_threshold (int): Min files for zero-error flag (default: 20)
             - previous_total_findings (int): Finding count from last run (for drop detection)
             - finding_drop_pct (float): % drop threshold to warn (default: 50.0)
+            - qg_error_file_threshold (int): Min QG error-files for reverse check (default: 3)
 
     Returns:
         List of coherence findings (policy_id="CK-COHERENCE").
@@ -42,6 +43,7 @@ def check_coherence(
     results: List[Finding] = []
 
     results.extend(_check_prs_ck_divergence(qg_findings, ck_findings, config))
+    results.extend(_check_reverse_divergence(qg_findings, ck_findings, config))
     results.extend(_check_suspiciously_clean(qg_findings, ck_findings, config))
     results.extend(_check_finding_count_drop(qg_findings, ck_findings, config))
 
@@ -109,6 +111,87 @@ def _check_prs_ck_divergence(
         ]
 
     return []
+
+
+def _check_reverse_divergence(
+    qg_findings: List[Finding],
+    ck_findings: List[Finding],
+    config: Dict[str, Any],
+) -> List[Finding]:
+    """Flag when QG screams red but CK stays silent (all-low findings).
+
+    This is the Scriptiva scenario: QG route layer at 0 PRS, many errors,
+    but CK has 1,769 findings all rated 'low'. CK should be flagging
+    architectural issues at higher severity when QG shows critical failures.
+
+    Fires when:
+    - QG has >= N files with errors (low PRS, indicating real problems)
+    - CK has 0 high or medium findings (staying silent)
+    """
+    qg_error_threshold = int(config.get("qg_error_file_threshold", 3))
+
+    # Count QG findings that indicate file-level errors (low PRS)
+    qg_error_files = set()
+    for f in qg_findings:
+        prs = f.metadata.get("prs")
+        errors = f.metadata.get("errors", 0)
+        if prs is not None and (float(prs) < 50 or int(errors) > 0):
+            # Extract file from evidence
+            for ev in f.evidence:
+                if ev.file:
+                    qg_error_files.add(ev.file)
+
+    if len(qg_error_files) < qg_error_threshold:
+        return []
+
+    # Check if CK has any high or medium findings
+    ck_high_med = sum(
+        1 for f in ck_findings
+        if f.severity in ("high", "blocker", "medium")
+        and "quality_gate" not in f.policy_id  # exclude QG integration findings
+    )
+
+    if ck_high_med > 0:
+        return []  # CK is flagging things — no divergence
+
+    ck_total = len([f for f in ck_findings if "quality_gate" not in f.policy_id])
+
+    return [
+        Finding(
+            policy_id="CK-COHERENCE",
+            title=f"Reverse severity divergence: QG has {len(qg_error_files)} error-files but CK findings are all low",
+            severity="medium",
+            confidence="medium",
+            why_it_matters=(
+                f"Quality Gate identifies {len(qg_error_files)} files with errors or PRS < 50, "
+                f"indicating serious code quality problems. However, Cathedral Keeper has "
+                f"{ck_total} findings all rated 'low' severity — none elevated to high or medium. "
+                f"This suggests CK's severity model is too lenient: files that QG flags as failing "
+                f"should produce at least some medium/high CK findings (e.g., untested blast-radius "
+                f"files, dead modules with dependents, architectural hotspots)."
+            ),
+            evidence=[
+                Evidence(
+                    file="(cross-metric check)",
+                    line=0,
+                    snippet=f"QG error-files={len(qg_error_files)}, CK high+medium=0, CK total={ck_total}",
+                    note="QG says critical problems, CK stays silent — severity gradient needed",
+                )
+            ],
+            fix_options=[
+                "Review CK severity model — dead modules with blast-radius > 0 should be MEDIUM, not LOW.",
+                "Untested files with high fan-in should be HIGH, not LOW.",
+                "Enable CK-ARCH-TEST-COVERAGE with severity escalation based on fan-in.",
+            ],
+            verification=["ck analyze --root . --blast-radius --verbose"],
+            metadata={
+                "qg_error_file_count": len(qg_error_files),
+                "ck_high_med_count": 0,
+                "ck_total_count": ck_total,
+                "check": "reverse_divergence",
+            },
+        )
+    ]
 
 
 def _check_suspiciously_clean(

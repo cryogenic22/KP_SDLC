@@ -164,6 +164,55 @@ def test_coherence_no_flag_finding_count_stable():
     assert len(drop_findings) == 0
 
 
+# ── Tests: Reverse-Direction Coherence (BUG-002) ─────────────────────
+# QG screams red (many errors, zero-PRS files) but CK stays all-low.
+# This is the Scriptiva scenario the red team flagged.
+
+
+def test_coherence_fires_when_qg_errors_but_ck_all_low():
+    """QG has many error-severity findings but CK has zero high/medium → flag."""
+    # QG findings with many errors (low PRS)
+    qg_findings = _make_qg_findings([0.0, 0.0, 14.0, 16.0, 40.0])
+    # CK has findings but all rated LOW
+    ck_findings = _make_ck_findings(50, severity="low")
+
+    results = check_coherence(
+        qg_findings=qg_findings,
+        ck_findings=ck_findings,
+        config={"qg_error_file_threshold": 3},
+    )
+    reverse = [f for f in results if "silent" in f.title.lower() or "reverse" in f.title.lower() or "severity" in f.title.lower()]
+    assert len(reverse) >= 1
+
+
+def test_coherence_no_flag_when_ck_has_high_findings():
+    """QG has errors AND CK has high findings → consistent, no flag."""
+    qg_findings = _make_qg_findings([0.0, 0.0, 14.0])
+    ck_findings = _make_ck_findings(5, severity="high")
+
+    results = check_coherence(
+        qg_findings=qg_findings,
+        ck_findings=ck_findings,
+        config={"qg_error_file_threshold": 3},
+    )
+    reverse = [f for f in results if "silent" in f.title.lower() or "reverse" in f.title.lower() or "severity" in f.title.lower()]
+    assert len(reverse) == 0
+
+
+def test_coherence_fires_on_many_zero_prs_files():
+    """Multiple files at PRS 0 with CK all-low → Scriptiva exact scenario."""
+    qg_findings = _make_qg_findings([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    ck_findings = _make_ck_findings(100, severity="low")
+
+    results = check_coherence(
+        qg_findings=qg_findings,
+        ck_findings=ck_findings,
+        config={},
+    )
+    reverse = [f for f in results if "silent" in f.title.lower() or "reverse" in f.title.lower() or "severity" in f.title.lower()]
+    assert len(reverse) >= 1
+
+
 # ── Tests: Configuration ─────────────────────────────────────────────
 
 

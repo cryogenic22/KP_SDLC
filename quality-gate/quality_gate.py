@@ -223,17 +223,18 @@ class QualityGate:
         merged: dict[str, Any] = dict(DEFAULT_CONFIG)
         sources: list[Path] = []
 
+        # Priority: defaults < quality-gate.config.json (portable) < .quality-gate.json (repo override)
         defaults_path = script_dir / "quality-gate.config.json"
         if defaults_path.exists():
             sources.append(defaults_path)
 
+        root_config = self.root_dir / "quality-gate.config.json"
+        if root_config.exists() and root_config.resolve() != defaults_path.resolve():
+            sources.append(root_config)
+
         root_override = self.root_dir / ".quality-gate.json"
         if root_override.exists():
             sources.append(root_override)
-
-        root_config = self.root_dir / "quality-gate.config.json"
-        if root_config.exists():
-            sources.append(root_config)
 
         if config_path:
             p = Path(config_path)
@@ -1306,8 +1307,8 @@ class QualityGate:
             try:
                 with open(file_path, encoding='utf-8', errors='ignore') as f:
                     all_files[file_path] = f.read().splitlines()
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError):
+                continue  # skip unreadable files
 
         # Run per-file checks
         for file_path in files:

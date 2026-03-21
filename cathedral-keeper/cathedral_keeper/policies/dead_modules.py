@@ -66,7 +66,9 @@ def check_dead_modules(
 
     severity = str(cfg.get("severity", "low")).lower()
     findings: List[Finding] = []
+    total_files = len(all_files)
 
+    dead_files: List[str] = []
     for rel in sorted(all_files):
         # Skip if something imports this file
         if rel in imported_files:
@@ -76,6 +78,9 @@ def check_dead_modules(
         if matches_any(rel, entry_patterns):
             continue
 
+        dead_files.append(rel)
+
+    for rel in dead_files:
         findings.append(
             Finding(
                 policy_id="CK-ARCH-DEAD-MODULES",
@@ -92,7 +97,7 @@ def check_dead_modules(
                         file=rel,
                         line=1,
                         snippet="(no incoming imports)",
-                        note="Not imported by any analysed file",
+                        note=f"Not imported by any analysed file ({len(dead_files)} dead out of {total_files} total files)",
                     )
                 ],
                 fix_options=[
@@ -100,7 +105,12 @@ def check_dead_modules(
                     "If it is a legitimate entry point, add its pattern to entry_point_patterns in config.",
                 ],
                 verification=[f"grep -r 'import.*{Path(rel).stem}' --include='*.py' ."],
-                metadata={"file": rel},
+                metadata={
+                    "file": rel,
+                    "total_files_analysed": total_files,
+                    "total_dead_files": len(dead_files),
+                    "unit": "files",
+                },
             )
         )
 
