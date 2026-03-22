@@ -140,6 +140,151 @@ def test_fix_does_not_modify_input():
     assert lines == original
 
 
+# ── bare_except → except Exception: ──────────────────────────────────
+
+
+def test_fix_bare_except():
+    """except: → except Exception:."""
+    lines = [
+        "try:",
+        "    risky()",
+        "except:",
+        "    handle()",
+    ]
+    fix = generate_fix(rule="bare_except", file="app.py", line=3, lines=lines, context_start=0)
+    assert fix is not None
+    assert "except Exception:" in fix.fixed
+    assert fix.confidence == "high"
+    # original should still have bare except
+    assert "except:" in fix.original
+
+
+# ── no_debug_statements → line removed ───────────────────────────────
+
+
+def test_fix_no_debug_breakpoint():
+    """breakpoint() line should be removed."""
+    lines = [
+        "x = compute()",
+        "breakpoint()",
+        "return x",
+    ]
+    fix = generate_fix(rule="no_debug_statements", file="app.py", line=2, lines=lines, context_start=0)
+    assert fix is not None
+    assert fix.fixed == ""
+    assert "breakpoint" in fix.original
+    assert fix.confidence == "high"
+
+
+def test_fix_no_debug_print_debug():
+    """print(f"DEBUG ...") line should be removed."""
+    lines = [
+        "x = 1",
+        'print(f"DEBUG value is {x}")',
+        "return x",
+    ]
+    fix = generate_fix(rule="no_debug_statements", file="app.py", line=2, lines=lines, context_start=0)
+    assert fix is not None
+    assert fix.fixed == ""
+
+
+def test_fix_no_debug_print_arrows():
+    """print(">>> ...") line should be removed."""
+    lines = [
+        "x = 1",
+        'print(">>> entering func")',
+        "return x",
+    ]
+    fix = generate_fix(rule="no_debug_statements", file="app.py", line=2, lines=lines, context_start=0)
+    assert fix is not None
+    assert fix.fixed == ""
+
+
+# ── mutable_default → None guard ─────────────────────────────────────
+
+
+def test_fix_mutable_default_list():
+    """def f(x=[]) → def f(x=None) + if x is None: x = []."""
+    lines = [
+        "def f(x=[]):",
+        "    return x",
+    ]
+    fix = generate_fix(rule="mutable_default", file="app.py", line=1, lines=lines, context_start=0)
+    assert fix is not None
+    assert "x=None" in fix.fixed
+    assert "if x is None:" in fix.fixed
+    assert "x = []" in fix.fixed
+    assert fix.confidence == "high"
+
+
+def test_fix_mutable_default_dict():
+    """def f(x={}) → def f(x=None) + if x is None: x = {}."""
+    lines = [
+        "def process(data={}):",
+        "    return data",
+    ]
+    fix = generate_fix(rule="mutable_default", file="app.py", line=1, lines=lines, context_start=0)
+    assert fix is not None
+    assert "data=None" in fix.fixed
+    assert "if data is None:" in fix.fixed
+    assert "data = {}" in fix.fixed
+    assert fix.confidence == "high"
+
+
+# ── regex_compile_in_loop → hoist above loop ─────────────────────────
+
+
+def test_fix_regex_compile_in_loop():
+    """re.compile inside loop body should be hoisted above the loop."""
+    lines = [
+        "for item in items:",
+        "    pat = re.compile(r'\\d+')",
+        "    m = pat.match(item)",
+    ]
+    fix = generate_fix(rule="regex_compile_in_loop", file="app.py", line=1, lines=lines, context_start=0)
+    assert fix is not None
+    assert fix.confidence == "medium"
+    # The fixed output should have re.compile BEFORE the for line
+    fixed_lines = fix.fixed.split("\n")
+    compile_idx = None
+    loop_idx = None
+    for idx, ln in enumerate(fixed_lines):
+        if "re.compile" in ln:
+            compile_idx = idx
+        if ln.strip().startswith("for "):
+            loop_idx = idx
+    assert compile_idx is not None and loop_idx is not None
+    assert compile_idx < loop_idx, "re.compile should appear before the loop"
+
+
+# ── string_concat_in_loop → list append + join ───────────────────────
+
+
+def test_fix_string_concat_in_loop():
+    """+= string in loop → _parts.append + join."""
+    lines = [
+        "for word in words:",
+        "    result += word",
+    ]
+    fix = generate_fix(rule="string_concat_in_loop", file="app.py", line=1, lines=lines, context_start=0)
+    assert fix is not None
+    assert fix.confidence == "medium"
+    assert "_parts.append(word)" in fix.fixed
+    assert '".join(_parts)' in fix.fixed or "\".join(_parts)" in fix.fixed
+
+
+def test_fix_string_concat_reassign_in_loop():
+    """result = result + expr in loop → _parts.append + join."""
+    lines = [
+        "for c in chars:",
+        "    out = out + c",
+    ]
+    fix = generate_fix(rule="string_concat_in_loop", file="app.py", line=1, lines=lines, context_start=0)
+    assert fix is not None
+    assert "_parts.append(c)" in fix.fixed
+    assert "out" in fix.fixed
+
+
 # ── Runner ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -1502,9 +1502,37 @@ class QualityGate:
         print(f"{status}")
         print("-" * 70)
 
-    def generate_json_report(self, result: CheckResult) -> str:
+    def generate_autofixes(self, result):
+        """Generate auto-fix diffs for fixable findings."""
+        try:
+            from qg.autofix import generate_fix
+        except ImportError:
+            return []
+        fixes = []
+        for issue in result.issues:
+            # Read the file to get lines context
+            try:
+                with open(os.path.join(self.root_dir, issue.file)) as f:
+                    lines = f.read().splitlines()
+            except (OSError, IOError):
+                continue
+            fix = generate_fix(rule=issue.rule, file=issue.file, line=issue.line, lines=lines, context_start=0)
+            if fix:
+                fixes.append({"rule": fix.rule, "file": fix.file, "line": fix.line, "diff": fix.diff, "confidence": fix.confidence, "original": fix.original, "fixed": fix.fixed})
+        return fixes
+
+    def generate_json_report(self, result: CheckResult, include_autofixes=False) -> str:
         """Generate JSON report for CI/CD integration."""
+        try:
+            from qg.tool_status import run_heartbeat, build_tool_status
+            hb_passed, hb_count = run_heartbeat()
+            ts = build_tool_status(components_run=["quality-gate"], components_failed=[], heartbeat_passed=hb_passed)
+            tool_status = ts.to_dict()
+        except Exception:
+            tool_status = {"status": "unknown", "heartbeat_passed": False, "components_run": ["quality-gate"], "components_failed": [], "run_id": "", "timestamp": ""}
+
         report = {
+            "tool_status": tool_status,
             "timestamp": datetime.now().isoformat(),
             "passed": result.passed,
             "stats": result.stats,
@@ -1523,6 +1551,10 @@ class QualityGate:
                 for issue in result.issues
             ]
         }
+
+        if include_autofixes:
+            report["autofixes"] = self.generate_autofixes(result)
+
         return json.dumps(report, indent=2)
 
 
@@ -1549,6 +1581,8 @@ def main():
     parser.add_argument('--root', help='Project root directory (default: parent of this quality-gate folder)')
     parser.add_argument('--no-prs', action='store_true', help='Disable PRS scoring/enforcement')
     parser.add_argument('--min-score', type=int, default=None, help='Override PRS minimum score (default: 85)')
+    parser.add_argument('--sarif', help='Write SARIF 2.1.0 output to this path')
+    parser.add_argument('--autofix', action='store_true', help='Include auto-fix diffs in JSON output')
 
     args = parser.parse_args()
 
@@ -1570,7 +1604,7 @@ def main():
     result = gate.run(paths=paths or None, staged_only=args.staged)
 
     if args.json:
-        print(gate.generate_json_report(result))
+        print(gate.generate_json_report(result, include_autofixes=args.autofix))
     elif args.mode == "audit" and not args.verbose:
         print("QUALITY GATE AUDIT")
         print(f"Files checked: {result.stats.get('files_checked', 0)}")
@@ -1584,6 +1618,13 @@ def main():
             )
     else:
         gate.print_report(result, verbose=args.verbose)
+
+    if args.sarif:
+        from qg.sarif_output import qg_to_sarif
+        issues_data = [{"file": i.file, "line": i.line, "rule": i.rule, "severity": i.severity.value, "message": i.message, "suggestion": i.suggestion} for i in result.issues]
+        sarif = qg_to_sarif(issues=issues_data, tool_name="quality-gate", tool_version="1.0.0")
+        with open(args.sarif, "w") as f:
+            json.dump(sarif, f, indent=2)
 
     if args.mode == "audit" and args.top and gate.file_prs:
         ranked = sorted(gate.file_prs.items(), key=lambda kv: float(kv[1].get("score", 0.0)))
