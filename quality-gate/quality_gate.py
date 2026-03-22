@@ -92,6 +92,13 @@ except ImportError:  # pragma: no cover
     check_agent_loop_safety = None  # type: ignore[assignment]
     check_llm_output_safety = None  # type: ignore[assignment]
 
+try:  # Phase 5 packs (prompt quality, data contracts)
+    from qg.checks_prompt_quality import check_prompt_quality
+    from qg.checks_data_contracts import check_data_contracts
+except ImportError:  # pragma: no cover
+    check_prompt_quality = None  # type: ignore[assignment]
+    check_data_contracts = None  # type: ignore[assignment]
+
 try:  # PRS veto engine
     from qg.prs_engine import should_veto, compute_bprs, DEFAULT_VETO_RULES
     HAS_PRS_VETO = True
@@ -1312,6 +1319,22 @@ class QualityGate:
                 )
             if check_llm_output_safety is not None:
                 check_llm_output_safety(
+                    file_path=file_path,
+                    content=content,
+                    lines=lines,
+                    add_issue=_add_issue_bridge,
+                )
+
+            # Phase 5 packs (prompt quality, data contracts)
+            if check_prompt_quality is not None:
+                check_prompt_quality(
+                    file_path=file_path,
+                    content=content,
+                    lines=lines,
+                    add_issue=_add_issue_bridge,
+                )
+            if check_data_contracts is not None:
+                check_data_contracts(
                     file_path=file_path,
                     content=content,
                     lines=lines,
