@@ -150,27 +150,55 @@ def _build_prompt(
     file_path: str,
     line: int,
 ) -> str:
-    """Build a focused prompt for code fix generation."""
-    return f"""You are a senior Python engineer fixing a code quality issue.
+    """Build a prompt that produces gold-standard, best-in-class code.
 
-RULE: {rule_id}
-FILE: {file_path}
-LINE: {line}
-ISSUE: {message}
-HINT: {suggestion}
+    The prompt is designed to demonstrate what excellent AI-generated
+    code looks like — code that a senior engineer would approve in
+    code review without any changes.
+    """
+    return f"""You are a principal software engineer producing gold-standard production code.
+Your output should demonstrate best-in-class software engineering practices that
+a senior reviewer would approve without changes.
 
-CODE CONTEXT (line numbers shown):
+QUALITY ISSUE TO FIX:
+  Rule: {rule_id}
+  File: {file_path}
+  Line: {line}
+  Issue: {message}
+  Hint: {suggestion}
+
+CURRENT CODE (line numbers shown):
 ```python
 {code_context}
 ```
 
-Provide ONLY the fixed code snippet. Requirements:
-1. Fix the specific issue identified — nothing else
-2. Preserve the existing code style and indentation
-3. Do not add comments explaining the fix
-4. Do not refactor surrounding code
-5. Keep the fix minimal and focused
-6. Return ONLY the replacement code, no markdown fences
+PRODUCE THE FIXED CODE following these gold-standard SWE practices:
+
+1. SINGLE RESPONSIBILITY: Each function does exactly one thing. If the fix
+   requires splitting a function, do it. Name the extracted function clearly.
+
+2. EXPLICIT OVER IMPLICIT: Use type hints on all parameters and return values.
+   Use explicit exception types, not bare except. Use named constants, not magic numbers.
+
+3. DEFENSIVE AT BOUNDARIES: Validate inputs from external systems (API responses,
+   user input, file reads). Trust internal typed function calls.
+
+4. ERROR HANDLING THAT HELPS: Catch specific exceptions. Log with context
+   (what failed, what the inputs were). Re-raise or return typed errors, never
+   silently swallow.
+
+5. READABILITY: Variable names reflect the domain (invoice_total, not data).
+   No comments that restate the code. Only comment WHY something non-obvious
+   exists.
+
+6. TESTABILITY: Pure functions where possible. Dependencies injected, not
+   hard-coded. Side effects isolated and explicit.
+
+CONSTRAINTS:
+- Fix ONLY the identified issue — do not refactor unrelated code
+- Preserve existing indentation and style conventions
+- Return ONLY the replacement code, no markdown fences or explanations
+- The output should look like it was written by a careful human, not generated
 
 FIXED CODE:"""
 

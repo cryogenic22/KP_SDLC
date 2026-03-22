@@ -469,7 +469,7 @@ def generate_narrative(friendly_name, tech_stack, qg_data, ck_data, prs_rows, fi
 # Full HTML generation for one repo
 # ---------------------------------------------------------------------------
 
-def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_title, repo_root=None):
+def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_title, repo_root=None, enable_llm_fixes=False):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     health = health_score(qg_data, ck_data)
     hcolor = health_color(health)
@@ -1104,11 +1104,19 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
 
     # ---- ENRICH FINDINGS WITH FIX SUGGESTIONS ----
     _fix_count = 0
+    _llm_fix_count = 0
     try:
-        from fix_integration import get_deterministic_fix, generate_fix_html
+        from fix_integration import get_fix_for_finding, generate_fix_html
+
+        # Build LLM config from env
+        _llm_config = {
+            "llm_model": os.environ.get("LLM_MODEL", "claude-sonnet-4-5-20250514"),
+            "llm_max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "1024")),
+        }
+        _llm_max = int(os.environ.get("LLM_MAX_FIXES_PER_RUN", "20"))
+
         _file_cache = {}
         for _fp, _issues in file_issues.items():
-            # Read file content for fix generation
             if repo_root and _fp not in _file_cache:
                 try:
                     with open(os.path.join(repo_root, _fp), encoding="utf-8", errors="ignore") as _f:
@@ -1117,15 +1125,24 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
                     _file_cache[_fp] = ""
             _content = _file_cache.get(_fp, "")
             for _issue in _issues:
-                _det = get_deterministic_fix(_issue.get("rule", ""), _issue, _content)
-                if _det:
-                    _issue["_fix_html"] = generate_fix_html(_det)
+                _use_llm = enable_llm_fixes and _llm_fix_count < _llm_max
+                _fix = get_fix_for_finding(_issue, _content, enable_llm=_use_llm, config=_llm_config)
+                if _fix:
+                    _issue["_fix_html"] = generate_fix_html(_fix)
                     _fix_count += 1
+                    if _fix.get("type") == "llm":
+                        _llm_fix_count += 1
     except ImportError:
         pass
 
     # ---- FILE-LEVEL DETAILS ----
-    _fix_label = f' <span style="background:#16a34a;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">&#x1F527; {_fix_count} auto-fixes available</span>' if _fix_count > 0 else ""
+    _det_count = _fix_count - _llm_fix_count
+    _fix_parts = []
+    if _det_count > 0:
+        _fix_parts.append(f'<span style="background:#16a34a;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">&#x1F527; {_det_count} auto-fixes</span>')
+    if _llm_fix_count > 0:
+        _fix_parts.append(f'<span style="background:#8b5cf6;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">&#x1F916; {_llm_fix_count} AI suggestions</span>')
+    _fix_label = " " + " ".join(_fix_parts) if _fix_parts else ""
     html.append(f"""
   <div class="section" id="files">
     <div class="section-title"><span class="icon">&#x1F4C2;</span> File-Level Issue Details{_fix_label}</div>
@@ -1251,12 +1268,25 @@ def parse_args(argv=None):
                    help="Output directory (default: <root>/.quality-reports)")
     p.add_argument("--title", type=str, default="Quality & Architecture Report",
                    help="Report branding title")
+    p.add_argument("--llm-fixes", action="store_true",
+                   help="Enable LLM-generated fix suggestions for complex findings (requires ANTHROPIC_API_KEY or OPENAI_API_KEY in .env or environment)")
+    p.add_argument("--env", type=str, default=None,
+                   help="Path to .env file (default: auto-discover from cwd or repo root)")
     return p.parse_args(argv)
 
 
 def main(argv=None):
     args = parse_args(argv)
     root = Path(args.root).resolve()
+
+    # Load .env configuration
+    try:
+        from env_loader import load_env
+        loaded = load_env(args.env)
+        if loaded and any(k.startswith(("ANTHROPIC", "OPENAI", "LLM")) for k in loaded):
+            print(f"  .env  Loaded {len(loaded)} settings from .env")
+    except ImportError:
+        pass
 
     # Discover repos
     if args.repos:
@@ -1297,7 +1327,7 @@ def main(argv=None):
             continue
 
         tech = infer_tech_stack(qg_data)
-        html = generate_html(repo_name, friendly, tech, qg_data, ck_data, args.title, repo_root=str(repo_dir))
+        html = generate_html(repo_name, friendly, tech, qg_data, ck_data, args.title, repo_root=str(repo_dir), enable_llm_fixes=getattr(args, 'llm_fixes', False))
 
         slug = friendly.lower().replace(" ", "_")
         out_path = output_dir / f"quality_report_{slug}.html"
