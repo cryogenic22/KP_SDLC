@@ -1102,6 +1102,16 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
         html.append("<p>No architecture findings.</p>")
     html.append("</div>")
 
+    # ---- EXCLUDE OWN MODULES (QG/CK/FE/Reporting) ----
+    _own_module_patterns = (
+        "quality-gate/", "quality_gate.py", "cathedral-keeper/", "cathedral_keeper/",
+        "fix-engine/", "reporting/", "generate_html_reports.py", "generate_index.py",
+        "ck.py", "fix_engine.py", "sarif_formatter.py",
+    )
+    for _fp in list(file_issues.keys()):
+        if any(p in _fp for p in _own_module_patterns):
+            del file_issues[_fp]
+
     # ---- ENRICH FINDINGS WITH FIX SUGGESTIONS ----
     _fix_count = 0
     _llm_fix_count = 0
@@ -1143,10 +1153,60 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
     if _llm_fix_count > 0:
         _fix_parts.append(f'<span style="background:#8b5cf6;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">&#x1F916; {_llm_fix_count} AI suggestions</span>')
     _fix_label = " " + " ".join(_fix_parts) if _fix_parts else ""
+
+    # Tag each issue with fix type for filtering
+    for _fp, _issues in file_issues.items():
+        for _issue in _issues:
+            if "_fix_html" in _issue:
+                if "Auto-Fix" in _issue["_fix_html"]:
+                    _issue["_fix_type"] = "autofix"
+                elif "AI Suggestion" in _issue["_fix_html"]:
+                    _issue["_fix_type"] = "llm"
+                else:
+                    _issue["_fix_type"] = ""
+            else:
+                _issue["_fix_type"] = ""
     html.append(f"""
   <div class="section" id="files">
     <div class="section-title"><span class="icon">&#x1F4C2;</span> File-Level Issue Details{_fix_label}</div>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Click a file to expand its issues. Findings with <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">&#x1F527; Auto-Fix</span> have deterministic code fixes.</p>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:8px">Click a file to expand its issues. Findings with <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">&#x1F527; Auto-Fix</span> have deterministic code fixes.</p>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap" id="fix-filters">
+      <button onclick="filterFiles('all')" class="filter-btn active" data-filter="all" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--accent);color:white;cursor:pointer;font-size:12px;font-weight:600">All Issues</button>
+      <button onclick="filterFiles('error')" class="filter-btn" data-filter="error" style="padding:6px 14px;border-radius:6px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;cursor:pointer;font-size:12px;font-weight:600">Errors Only</button>
+      <button onclick="filterFiles('autofix')" class="filter-btn" data-filter="autofix" style="padding:6px 14px;border-radius:6px;border:1px solid #bbf7d0;background:#f0fdf4;color:#16a34a;cursor:pointer;font-size:12px;font-weight:600">&#x1F527; Has Auto-Fix</button>
+      <button onclick="filterFiles('llm')" class="filter-btn" data-filter="llm" style="padding:6px 14px;border-radius:6px;border:1px solid #ddd6fe;background:#f5f3ff;color:#8b5cf6;cursor:pointer;font-size:12px;font-weight:600">&#x1F916; Has AI Suggestion</button>
+      <button onclick="filterFiles('nofix')" class="filter-btn" data-filter="nofix" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);cursor:pointer;font-size:12px;font-weight:600">No Fix Available</button>
+    </div>
+    <script>
+    function filterFiles(type) {{
+      document.querySelectorAll('#fix-filters .filter-btn').forEach(b => {{
+        b.style.background = b.dataset.filter === type ? 'var(--accent)' : 'var(--bg2)';
+        b.style.color = b.dataset.filter === type ? 'white' : 'var(--text2)';
+        b.style.border = b.dataset.filter === type ? '1px solid var(--accent)' : '1px solid var(--border)';
+      }});
+      document.querySelectorAll('.file-group').forEach(g => {{
+        const issues = g.querySelectorAll('.issue-row');
+        let hasVisible = false;
+        issues.forEach(row => {{
+          const sev = row.querySelector('.sev-badge')?.textContent?.trim()?.toLowerCase() || '';
+          const hasAutofix = row.querySelector('[style*="#16a34a"]') !== null && row.innerHTML.includes('Auto-Fix');
+          const hasLlm = row.innerHTML.includes('AI Suggestion');
+          let show = true;
+          if (type === 'error') show = sev === 'error';
+          else if (type === 'autofix') show = hasAutofix;
+          else if (type === 'llm') show = hasLlm;
+          else if (type === 'nofix') show = !hasAutofix && !hasLlm;
+          row.style.display = show ? '' : 'none';
+          if (show) hasVisible = true;
+        }});
+        g.style.display = hasVisible || type === 'all' ? '' : 'none';
+        if (type !== 'all' && hasVisible) {{
+          const body = g.querySelector('.file-body');
+          if (body) body.classList.add('open');
+        }}
+      }});
+    }}
+    </script>
 """)
     sorted_files = sorted(file_issues.items(), key=lambda x: (-len([i for i in x[1] if i.get("severity") == "error"]), -len(x[1])))
     for filepath, issues in sorted_files:
