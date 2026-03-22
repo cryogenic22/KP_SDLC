@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -468,7 +469,7 @@ def generate_narrative(friendly_name, tech_stack, qg_data, ck_data, prs_rows, fi
 # Full HTML generation for one repo
 # ---------------------------------------------------------------------------
 
-def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_title):
+def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_title, repo_root=None):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     health = health_score(qg_data, ck_data)
     hcolor = health_color(health)
@@ -1101,11 +1102,34 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
         html.append("<p>No architecture findings.</p>")
     html.append("</div>")
 
+    # ---- ENRICH FINDINGS WITH FIX SUGGESTIONS ----
+    _fix_count = 0
+    try:
+        from fix_integration import get_deterministic_fix, generate_fix_html
+        _file_cache = {}
+        for _fp, _issues in file_issues.items():
+            # Read file content for fix generation
+            if repo_root and _fp not in _file_cache:
+                try:
+                    with open(os.path.join(repo_root, _fp), encoding="utf-8", errors="ignore") as _f:
+                        _file_cache[_fp] = _f.read()
+                except OSError:
+                    _file_cache[_fp] = ""
+            _content = _file_cache.get(_fp, "")
+            for _issue in _issues:
+                _det = get_deterministic_fix(_issue.get("rule", ""), _issue, _content)
+                if _det:
+                    _issue["_fix_html"] = generate_fix_html(_det)
+                    _fix_count += 1
+    except ImportError:
+        pass
+
     # ---- FILE-LEVEL DETAILS ----
-    html.append("""
+    _fix_label = f' <span style="background:#16a34a;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">&#x1F527; {_fix_count} auto-fixes available</span>' if _fix_count > 0 else ""
+    html.append(f"""
   <div class="section" id="files">
-    <div class="section-title"><span class="icon">&#x1F4C2;</span> File-Level Issue Details</div>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Click a file to expand its issues.</p>
+    <div class="section-title"><span class="icon">&#x1F4C2;</span> File-Level Issue Details{_fix_label}</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Click a file to expand its issues. Findings with <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">&#x1F527; Auto-Fix</span> have deterministic code fixes.</p>
 """)
     sorted_files = sorted(file_issues.items(), key=lambda x: (-len([i for i in x[1] if i.get("severity") == "error"]), -len(x[1])))
     for filepath, issues in sorted_files:
@@ -1146,6 +1170,7 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
   <div class="issue-msg">{esc(msg)}</div>
   {'<div style="font-family:monospace;font-size:11px;color:var(--text3);background:#f8fafc;padding:4px 8px;border-radius:4px;margin:4px 0">' + esc(snippet) + '</div>' if snippet else ''}
   {'<div class="issue-fix">&#x1F4A1; ' + esc(suggestion) + '</div>' if suggestion else ''}
+  {issue.get('_fix_html', '')}
 </div>""")
         html.append("</div></div>")
     html.append("</div>")
@@ -1272,7 +1297,7 @@ def main(argv=None):
             continue
 
         tech = infer_tech_stack(qg_data)
-        html = generate_html(repo_name, friendly, tech, qg_data, ck_data, args.title)
+        html = generate_html(repo_name, friendly, tech, qg_data, ck_data, args.title, repo_root=str(repo_dir))
 
         slug = friendly.lower().replace(" ", "_")
         out_path = output_dir / f"quality_report_{slug}.html"
