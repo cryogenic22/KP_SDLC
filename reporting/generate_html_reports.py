@@ -711,6 +711,7 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
     <a href="#narrative">Lead Reviewer Narrative</a>
     <a href="#prs">PRS Scores</a>
     <a href="#rules">Rule Breakdown</a>
+    <a href="#ai-quality">AI Code Analysis</a>
     <a href="#arch">Architecture Findings</a>
     <a href="#files">File-Level Details</a>
     <a href="#actions">Recommended Actions</a>
@@ -897,6 +898,136 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
   <div class="chart-bar-count">{count}</div>
 </div>""")
     html.append("</div>")
+
+    # ---- AI CODE QUALITY SECTION ----
+    all_issues = [i for issues in file_issues.values() for i in issues]
+    ai_issues = [i for i in all_issues if i.get("rule", "").startswith("AI-PY")]
+    if ai_issues:
+        from collections import OrderedDict as _OD
+        ai_by_rule = Counter(i["rule"] for i in ai_issues)
+        ai_total = len(ai_issues)
+        ai_warn = sum(1 for i in ai_issues if i.get("severity") == "warning")
+        ai_info = sum(1 for i in ai_issues if i.get("severity") == "info")
+
+        # AI score: 100 minus penalty (warnings heavier than info)
+        ai_score = max(0, min(100, round(100 - (ai_warn * 3 + ai_info * 0.5) / max(files_checked, 1) * 100)))
+
+        # Color for score
+        ai_color = "#16a34a" if ai_score >= 80 else "#d97706" if ai_score >= 60 else "#ea580c" if ai_score >= 40 else "#dc2626"
+
+        html.append(f"""
+  <div class="section" id="ai-quality">
+    <div class="section-title"><span class="icon">&#x1F916;</span> AI-Generated Code Analysis</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">
+      Detects patterns common in unreviewed AI-generated code. Each finding includes a teaching suggestion
+      that explains the right approach &mdash; developers learn through corrections, not documentation.
+    </p>
+
+    <div class="card-row" style="margin-bottom:20px">
+      <div class="card">
+        <div class="card-value" style="color:{ai_color}">{ai_total}</div>
+        <div class="card-label">AI Code Findings</div>
+        <div class="card-sub">{ai_warn} warnings, {ai_info} info</div>
+      </div>
+      <div class="card">
+        <div class="card-value" style="color:{ai_color}">{ai_score}%</div>
+        <div class="card-label">AI Code Hygiene</div>
+        <div class="card-sub">100 = no AI-code smells detected</div>
+      </div>
+      <div class="card">
+        <div class="card-value">{ai_by_rule.get('AI-PY-OVER-COMMENTING', 0)}</div>
+        <div class="card-label">Over-Commenting</div>
+        <div class="card-sub">Comments that restate the code</div>
+      </div>
+      <div class="card">
+        <div class="card-value" style="color:{'var(--red)' if ai_by_rule.get('AI-PY-VERBOSE-NOOP-HANDLER', 0) > 5 else 'var(--text1)'}">{ai_by_rule.get('AI-PY-VERBOSE-NOOP-HANDLER', 0)}</div>
+        <div class="card-label">No-Op Handlers</div>
+        <div class="card-sub">try/except that does nothing</div>
+      </div>
+    </div>
+""")
+
+        # Best practices guidance box
+        html.append("""
+    <div style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:1px solid #bfdbfe;border-radius:10px;padding:20px;margin-bottom:20px">
+      <div style="font-weight:700;font-size:15px;color:#1e40af;margin-bottom:10px">&#x1F4A1; How to Generate Better AI Code</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid #93c5fd">
+          <th style="text-align:left;padding:8px 12px;color:#1e40af">Instead of...</th>
+          <th style="text-align:left;padding:8px 12px;color:#16a34a">Do this...</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #dbeafe">
+            <td style="padding:8px 12px;color:#6b7280">Accepting AI code as-is</td>
+            <td style="padding:8px 12px">Run QG before committing &mdash; catch issues before they enter the codebase</td>
+          </tr>
+          <tr style="border-bottom:1px solid #dbeafe">
+            <td style="padding:8px 12px;color:#6b7280">Generic prompts: "write a function to process data"</td>
+            <td style="padding:8px 12px">Include domain context: "write a function to validate <em>invoice line items</em> against <em>tax rules</em>"</td>
+          </tr>
+          <tr style="border-bottom:1px solid #dbeafe">
+            <td style="padding:8px 12px;color:#6b7280">Letting AI add verbose comments</td>
+            <td style="padding:8px 12px">Prompt: "only add comments for non-obvious business logic, not code restatements"</td>
+          </tr>
+          <tr style="border-bottom:1px solid #dbeafe">
+            <td style="padding:8px 12px;color:#6b7280">AI's defensive isinstance() checks</td>
+            <td style="padding:8px 12px">Prompt: "use type hints, validate only at system boundaries (API input, file reads)"</td>
+          </tr>
+          <tr style="border-bottom:1px solid #dbeafe">
+            <td style="padding:8px 12px;color:#6b7280">AI's try/except Exception: pass</td>
+            <td style="padding:8px 12px">Prompt: "handle errors explicitly with logging and metrics, never silently swallow"</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px;color:#6b7280">Accepting AI-generated docstrings</td>
+            <td style="padding:8px 12px">Prompt: "one-line docstrings only, explain <em>why</em> the function exists, not what it does"</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+""")
+
+        # Per-rule breakdown with file details
+        ai_rule_info = {
+            "AI-PY-OVER-COMMENTING": ("Comments Restating Code", "#3b82f6", "AI tools trained on tutorials produce comments that describe what code does rather than why. These add noise and decay when code changes."),
+            "AI-PY-VERBOSE-NOOP-HANDLER": ("No-Op Exception Handlers", "#dc2626", "AI-generated try/except blocks that just <code>raise</code> or <code>pass</code> give false confidence. They look like error handling but do nothing."),
+            "AI-PY-EXCESSIVE-DOCSTRING": ("Excessive Docstrings", "#8b5cf6", "AI generates verbose docstrings to pad output. A 12-line docstring on a 2-line function is noise, not documentation."),
+            "AI-PY-REDUNDANT-TYPE-CHECK": ("Redundant Type Checks", "#d97706", "AI adds isinstance() checks on parameters that already have type hints. This duplicates the type system and clutters the logic."),
+            "AI-PY-GENERIC-NAMES": ("Generic Variable Names", "#0891b2", "AI without domain context uses <code>data</code>, <code>result</code>, <code>temp</code>. Domain-specific names make code self-documenting."),
+        }
+
+        for rule, count in ai_by_rule.most_common():
+            title, color, desc = ai_rule_info.get(rule, (rule, "#6b7280", ""))
+            rule_issues = [i for i in ai_issues if i["rule"] == rule]
+            example = rule_issues[0] if rule_issues else None
+
+            html.append(f"""
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden">
+      <div style="padding:12px 16px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center;cursor:pointer"
+           onclick="this.nextElementSibling.classList.toggle('open')">
+        <span>
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{color};margin-right:8px"></span>
+          <strong>{esc(title)}</strong>
+          <span style="color:var(--text3);margin-left:8px">{count} finding{'s' if count != 1 else ''}</span>
+        </span>
+        <span class="arrow" style="transition:transform 0.2s">&#9654;</span>
+      </div>
+      <div class="collapsible" style="padding:0 16px">
+        <p style="color:var(--text2);font-size:13px;margin:12px 0">{desc}</p>""")
+
+            if example and example.get("suggestion"):
+                html.append(f"""
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px">
+          <strong style="color:#16a34a">&#x2705; Right approach:</strong> {esc(example['suggestion'])}
+        </div>""")
+
+            html.append('<table style="width:100%;font-size:12px;margin-bottom:12px"><thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px">File</th><th style="text-align:left;padding:4px 8px">Line</th><th style="text-align:left;padding:4px 8px">Detail</th></tr></thead><tbody>')
+            for ri in rule_issues[:15]:
+                html.append(f'<tr style="border-bottom:1px solid var(--bg2)"><td style="padding:4px 8px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px">{esc(ri.get("file",""))}</td><td style="padding:4px 8px">{ri.get("line","?")}</td><td style="padding:4px 8px;color:var(--text2)">{esc(ri.get("message","")[:120])}</td></tr>')
+            if len(rule_issues) > 15:
+                html.append(f'<tr><td colspan="3" style="padding:4px 8px;color:var(--text3)">... and {len(rule_issues) - 15} more</td></tr>')
+            html.append('</tbody></table></div></div>')
+
+        html.append("</div>")
 
     # ---- ARCHITECTURE FINDINGS ----
     html.append("""
