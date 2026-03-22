@@ -1,0 +1,18 @@
+{
+  "fix_engine": {
+    "enabled": true,
+    "auto_apply_threshold": 0.95,
+    "categories": {
+      "safe": { "auto_apply": true },
+      "review": { "auto_apply": false, "suggest": true },
+      "manual": { "auto_apply": false, "suggest": false }
+    },
+    "disabled_fixes": [],
+    "sarif": {
+      "include_fixes": true,
+      "include_code_flows": true,
+      "tool_name": "KP_SDLC Quality Gate",
+      "tool_version": "1.0.0"
+    }
+  }
+}

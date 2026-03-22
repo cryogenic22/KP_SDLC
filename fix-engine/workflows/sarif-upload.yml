@@ -1,0 +1,59 @@
+# GitHub Actions — SARIF Upload on Pull Request
+#
+# Runs the Quality Gate scan on every PR, converts findings to SARIF,
+# and uploads them to GitHub Code Scanning so results appear as
+# inline annotations on the PR diff.
+
+name: "Quality Gate — SARIF Upload"
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # required for code-scanning upload
+
+jobs:
+  scan-and-upload:
+    name: Scan & Upload SARIF
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Quality Gate scan
+        run: |
+          python -m fix_engine scan \
+            --format sarif \
+            --output results.sarif \
+            --config fix-engine.config.json
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: "quality-gate"
+
+      - name: Post suggestion comments on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m fix_engine suggest \
+            --sarif results.sarif \
+            --format github \
+            --pr ${{ github.event.pull_request.number }}

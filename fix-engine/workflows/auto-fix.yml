@@ -1,0 +1,89 @@
+# GitHub Actions — Auto-Fix on Label
+#
+# When the "autofix" label is added to a PR, this workflow runs the
+# fix engine in apply mode, commits the changes, and pushes them to
+# the PR branch.
+
+name: "Quality Gate — Auto-Fix"
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write        # push fix commits back to PR branch
+  pull-requests: write   # post review comments
+
+jobs:
+  auto-fix:
+    name: Apply Auto-Fixes
+    if: github.event.label.name == 'autofix'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run fix engine (safe auto-apply)
+        run: |
+          python -m fix_engine apply \
+            --config fix-engine.config.json \
+            --category safe \
+            --threshold 0.95 \
+            --format sarif \
+            --output fixes.sarif
+
+      - name: Commit and push fixes
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "No fixes applied — nothing to commit."
+          else
+            git add -A
+            git commit -m "fix: auto-apply safe fixes from Quality Gate
+
+          Applied by fix-engine with confidence >= 0.95.
+          See fixes.sarif for details."
+            git push
+          fi
+
+      - name: Upload SARIF for applied fixes
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: fixes.sarif
+          category: "quality-gate-autofix"
+
+      - name: Post summary comment
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python -m fix_engine suggest \
+            --sarif fixes.sarif \
+            --format github \
+            --pr ${{ github.event.pull_request.number }} \
+            --summary-only
+
+      - name: Remove autofix label
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} \
+            --remove-label autofix
