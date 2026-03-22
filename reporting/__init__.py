@@ -155,7 +155,11 @@ def health_score(qg_data, ck_data):
         stats = qg_data.get("stats", {})
         total_files = stats.get("files_checked", 1) or 1
         failed_prs = stats.get("prs_files_failed", 0)
-        errors = stats.get("error", 0)
+        # Exclude prs_score enforcement errors — they're a consequence of
+        # other errors, not independent findings. Counting them double-penalizes.
+        issues = qg_data.get("issues", [])
+        prs_score_errors = sum(1 for i in issues if i.get("rule") == "prs_score")
+        errors = stats.get("error", 0) - prs_score_errors
         warnings = stats.get("warning", 0)
         score -= min((failed_prs / total_files) * 40, 25)
         score -= min(errors * 0.15, 20)

@@ -763,12 +763,36 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
 
     # ---- RADAR CHART (SVG) ----
     # Compute dimension scores (0-100, higher = better)
+    # Each formula uses a denominator and scale that produces a meaningful
+    # gradient across real codebases, not a binary 0/100 spike.
+
+    # Code Quality: avg PRS across all scored files (already 0-100)
     dim_code_quality = max(0, min(100, avg_prs)) if prs_scored else 50
-    dim_error_free = max(0, min(100, 100 - (total_errors / max(files_checked, 1)) * 100))
-    dim_arch_health = max(0, min(100, 100 - min(len(ck_findings) / max(files_checked, 1) * 50, 100)))
-    dim_test_coverage = max(0, min(100, 100 - (ck_policies.get("CK-ARCH-TEST-COVERAGE", 0) / max(files_checked, 1)) * 100))
+
+    # Error-Free: % of files with zero errors (excludes prs_score enforcement)
+    real_errors_by_file = Counter(i["file"] for i in qg_data.get("issues", []) if i.get("severity") == "error" and i.get("rule") != "prs_score") if qg_data else Counter()
+    files_with_errors = len(real_errors_by_file)
+    dim_error_free = max(0, min(100, round((1 - files_with_errors / max(files_checked, 1)) * 100)))
+
+    # Architecture: native CK findings only (exclude QG integration), log scale
+    # 0 findings = 100, findings/file ratio of 2+ = ~20
+    ck_native = [f for f in ck_findings if "quality_gate" not in f.get("policy_id", "")]
+    ck_file_count = len(set(f.get("evidence", [{}])[0].get("file", "") for f in ck_findings)) or files_checked
+    ck_ratio = len(ck_native) / max(ck_file_count, 1)
+    import math
+    dim_arch_health = max(0, min(100, round(100 * math.exp(-0.5 * ck_ratio))))
+
+    # Test Coverage: % of CK-analysed files that DON'T have a test-coverage finding
+    test_cov_count = ck_policies.get("CK-ARCH-TEST-COVERAGE", 0)
+    dim_test_coverage = max(0, min(100, round((1 - test_cov_count / max(ck_file_count, 1)) * 100)))
+
+    # PRS Pass Rate: direct percentage
     dim_prs_pass = prs_pass_rate
-    dim_maintainability = max(0, min(100, 100 - (qg_rule_counts.get("max_complexity", 0) + qg_rule_counts.get("function_size", 0)) / max(files_checked, 1) * 200))
+
+    # Maintainability: % of files without complexity or size violations
+    maint_issues = qg_rule_counts.get("max_complexity", 0) + qg_rule_counts.get("function_size", 0)
+    maint_files = len(set(i["file"] for i in qg_data.get("issues", []) if i.get("rule") in ("max_complexity", "function_size"))) if qg_data else 0
+    dim_maintainability = max(0, min(100, round((1 - maint_files / max(files_checked, 1)) * 100)))
 
     dimensions = [
         ("Code Quality", dim_code_quality),
@@ -780,7 +804,6 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
     ]
 
     # Generate SVG radar chart
-    import math
     cx, cy, r = 160, 160, 120
     n = len(dimensions)
     angles = [math.pi / 2 + 2 * math.pi * i / n for i in range(n)]
