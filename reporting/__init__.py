@@ -162,7 +162,7 @@ def health_score(qg_data, ck_data):
         errors = stats.get("error", 0) - prs_score_errors
         warnings = stats.get("warning", 0)
         score -= min((failed_prs / total_files) * 40, 25)
-        score -= min(errors * 0.15, 20)
+        score -= min(errors * 0.3, 20)
         score -= min(warnings * 0.02, 10)
 
     if ck_data:

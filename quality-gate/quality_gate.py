@@ -40,7 +40,7 @@ try:  # optional modular rules (keeps CLI stable while allowing gradual refactor
     from qg.rules_phase1 import apply as apply_phase1_rules
     from qg.rules_phase2 import apply as apply_phase2_rules
     from qg.rules_tests import apply as apply_test_rules
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     RuleContext = None  # type: ignore[assignment]
     apply_phase1_rules = None  # type: ignore[assignment]
     apply_phase2_rules = None  # type: ignore[assignment]
@@ -52,7 +52,7 @@ try:  # technology-pack checks (python, fastapi, langchain, ai/llm, ai smells)
     from qg.checks_langchain import check_langchain_patterns
     from qg.checks_ai_smells import check_ai_smell_patterns
     from qg.checks_ai_llm import check_ai_llm_patterns
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     check_python_patterns = None  # type: ignore[assignment]
     check_fastapi_patterns = None  # type: ignore[assignment]
     check_langchain_patterns = None  # type: ignore[assignment]
@@ -68,7 +68,7 @@ try:  # Phase 2-3 technology packs (neo4j, mongodb, databases, performance, sqla
     from qg.checks_docparse import check_docparse_patterns
     from qg.checks_nextjs import check_nextjs_patterns
     from qg.checks_security import check_security_patterns
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     check_neo4j_patterns = None  # type: ignore[assignment]
     check_mongodb_patterns = None  # type: ignore[assignment]
     check_database_patterns = None  # type: ignore[assignment]
@@ -81,21 +81,21 @@ except Exception:  # pragma: no cover
 try:  # Phase 3 packs (observability, UX error handling)
     from qg.checks_observability import check_observability_patterns
     from qg.checks_ux_errors import check_ux_error_patterns
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     check_observability_patterns = None  # type: ignore[assignment]
     check_ux_error_patterns = None  # type: ignore[assignment]
 
 try:  # Phase 4 packs (agentic AI safety)
     from qg.checks_agent_loops import check_agent_loop_safety
     from qg.checks_llm_output_safety import check_llm_output_safety
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     check_agent_loop_safety = None  # type: ignore[assignment]
     check_llm_output_safety = None  # type: ignore[assignment]
 
 try:  # PRS veto engine
     from qg.prs_engine import should_veto, compute_bprs, DEFAULT_VETO_RULES
     HAS_PRS_VETO = True
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     HAS_PRS_VETO = False
 
 # ============================================================================
