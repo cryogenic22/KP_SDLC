@@ -711,6 +711,7 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
     <a href="#summary">Executive Summary</a>
     <a href="#narrative">Lead Reviewer Narrative</a>
     <a href="#prs">PRS Scores</a>
+    <a href="#priority">Priority Queue</a>
     <a href="#rules">Rule Breakdown</a>
     <a href="#ai-quality">AI Code Analysis</a>
     <a href="#arch">Architecture Findings</a>
@@ -1144,6 +1145,117 @@ def generate_html(repo_name, friendly_name, tech_stack, qg_data, ck_data, brand_
                         _llm_fix_count += 1
     except ImportError:
         pass
+
+    # ---- PRIORITY QUEUE ----
+    # Tier all issues by actionability: critical > errors+fix > errors > warnings+fix > rest
+    _all_flat = []
+    for _fp, _issues in file_issues.items():
+        for _iss in _issues:
+            _sev = _iss.get("severity", "info")
+            _has_fix = "_fix_html" in _iss
+            _rule = _iss.get("rule", "")
+            # Priority score: lower = higher priority
+            if _sev == "critical":
+                _tier, _tier_name, _tier_color = 0, "Critical", "#dc2626"
+            elif _sev == "error" and _has_fix:
+                _tier, _tier_name, _tier_color = 1, "Errors with Fixes", "#ea580c"
+            elif _sev == "error":
+                _tier, _tier_name, _tier_color = 2, "Errors", "#dc2626"
+            elif _sev == "warning" and _has_fix:
+                _tier, _tier_name, _tier_color = 3, "Warnings with Fixes", "#d97706"
+            elif _sev == "warning" and _rule.startswith(("DATA-", "LLM-PY", "LOOP-PY", "PROMPT-PY")):
+                _tier, _tier_name, _tier_color = 4, "Data & AI Safety", "#7c3aed"
+            elif _sev == "warning":
+                _tier, _tier_name, _tier_color = 5, "Warnings", "#d97706"
+            elif _rule.startswith("AI-PY"):
+                _tier, _tier_name, _tier_color = 6, "AI Code Patterns", "#0891b2"
+            else:
+                _tier, _tier_name, _tier_color = 7, "Informational", "#6b7280"
+            _iss["_tier"] = _tier
+            _iss["_tier_name"] = _tier_name
+            _iss["_tier_color"] = _tier_color
+            _all_flat.append(_iss)
+
+    _all_flat.sort(key=lambda x: (x["_tier"], x.get("file", ""), x.get("line", 0)))
+
+    # Count by tier
+    _tier_counts = Counter(i["_tier_name"] for i in _all_flat)
+    _actionable = sum(1 for i in _all_flat if i["_tier"] <= 4)
+
+    html.append(f"""
+  <div class="section" id="priority">
+    <div class="section-title"><span class="icon">&#x1F3AF;</span> Priority Queue
+      <span style="font-size:14px;font-weight:400;color:var(--text3);margin-left:8px">{_actionable} actionable out of {len(_all_flat)} total</span>
+    </div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:12px">
+      Issues ranked by impact and actionability. Fix the top tiers first &mdash; lower tiers are collapsed by default.
+    </p>
+""")
+
+    # Render each tier as a collapsible group
+    _prev_tier = -1
+    _shown_tiers = set()
+    for _tier_num, _tier_name, _tier_color, _default_open in [
+        (0, "Critical", "#dc2626", True),
+        (1, "Errors with Fixes", "#ea580c", True),
+        (2, "Errors", "#dc2626", True),
+        (3, "Warnings with Fixes", "#d97706", True),
+        (4, "Data & AI Safety", "#7c3aed", True),
+        (5, "Warnings", "#d97706", False),
+        (6, "AI Code Patterns", "#0891b2", False),
+        (7, "Informational", "#6b7280", False),
+    ]:
+        _tier_issues = [i for i in _all_flat if i["_tier"] == _tier_num]
+        if not _tier_issues:
+            continue
+
+        _open_cls = "open" if _default_open else ""
+        _count = len(_tier_issues)
+        _fix_in_tier = sum(1 for i in _tier_issues if "_fix_html" in i)
+        _fix_badge = f' <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">&#x1F527; {_fix_in_tier} fixes</span>' if _fix_in_tier else ""
+
+        html.append(f"""
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
+      <div style="padding:10px 16px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center;cursor:pointer"
+           onclick="this.nextElementSibling.classList.toggle('open')">
+        <span>
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{_tier_color};margin-right:8px"></span>
+          <strong>{esc(_tier_name)}</strong>
+          <span style="color:var(--text3);margin-left:8px">{_count} finding{'s' if _count != 1 else ''}</span>
+          {_fix_badge}
+        </span>
+        <span class="arrow" style="transition:transform 0.2s">&#9654;</span>
+      </div>
+      <div class="collapsible {_open_cls}" style="padding:0 16px;max-height:600px;overflow-y:auto">
+        <table style="width:100%;font-size:12px;border-collapse:collapse;margin:8px 0">
+          <thead><tr style="border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg1)">
+            <th style="text-align:left;padding:6px 8px;width:30%">File</th>
+            <th style="text-align:left;padding:6px 8px;width:5%">Line</th>
+            <th style="text-align:left;padding:6px 8px;width:15%">Rule</th>
+            <th style="text-align:left;padding:6px 8px;width:40%">Message</th>
+            <th style="text-align:left;padding:6px 8px;width:10%">Fix</th>
+          </tr></thead><tbody>""")
+
+        for _iss in _tier_issues[:50]:
+            _file = _iss.get("file", "")
+            _short_file = _file if len(_file) < 45 else "..." + _file[-42:]
+            _ln = _iss.get("line", "")
+            _rule = _iss.get("rule", "")
+            _msg = _iss.get("message", "")[:100]
+            _fix_cell = ""
+            if _iss.get("_fix_type") == "autofix":
+                _fix_cell = '<span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">&#x1F527; Fix</span>'
+            elif _iss.get("_fix_type") == "llm":
+                _fix_cell = '<span style="background:#8b5cf6;color:white;padding:1px 6px;border-radius:3px;font-size:10px">&#x1F916; AI</span>'
+
+            html.append(f'<tr style="border-bottom:1px solid var(--bg2)"><td style="padding:4px 8px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px" title="{esc(_file)}">{esc(_short_file)}</td><td style="padding:4px 8px">{_ln}</td><td style="padding:4px 8px;font-family:monospace;font-size:11px">{esc(_rule)}</td><td style="padding:4px 8px;color:var(--text2)">{esc(_msg)}</td><td style="padding:4px 8px">{_fix_cell}</td></tr>')
+
+        if len(_tier_issues) > 50:
+            html.append(f'<tr><td colspan="5" style="padding:6px 8px;color:var(--text3);font-style:italic">... and {len(_tier_issues) - 50} more in this tier</td></tr>')
+
+        html.append("</tbody></table></div></div>")
+
+    html.append("</div>")
 
     # ---- FILE-LEVEL DETAILS ----
     _det_count = _fix_count - _llm_fix_count
