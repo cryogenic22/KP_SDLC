@@ -45,31 +45,50 @@ for skill_src in "$HARNESS_DIR"/skills/*/; do
   fi
 done
 
-# ---- top-level templates: CLAUDE.md, AGENTS.md ---------------------------
-for tmpl in CLAUDE.md AGENTS.md; do
-  src="$HARNESS_DIR/templates/${tmpl}.tmpl"
-  dest="$TARGET_DIR/$tmpl"
-  [[ -f "$src" ]] || continue
+# ---- per-file mapping (templates and hooks go to explicit destinations) --
+# Format: <source-relative-to-harness>|<destination-relative-to-target-root>
+# .tmpl suffix is stripped; {{BOOTSTRAP_DATE}} substituted at copy.
+FILE_MAP=(
+  "templates/CLAUDE.md.tmpl|CLAUDE.md"
+  "templates/AGENTS.md.tmpl|AGENTS.md"
+  "templates/PULL_REQUEST_TEMPLATE.md.tmpl|.github/PULL_REQUEST_TEMPLATE.md"
+  "hooks/pre-commit-config.yaml.tmpl|.pre-commit-config.yaml"
+  "hooks/red-flag-attestation.sh|.harness/hooks/red-flag-attestation.sh"
+)
+
+copy_file() {
+  local src="$1" dest="$2"
+  [[ -f "$src" ]] || return 0
   if [[ -f "$dest" ]]; then
-    note_skip "$tmpl"
-  else
-    # Substitute placeholders. {{PROJECT_NAME}} stays unresolved (user fills),
-    # {{BOOTSTRAP_DATE}} is filled now.
-    sed "s/{{BOOTSTRAP_DATE}}/$TODAY/g" "$src" > "$dest"
-    note_add "$tmpl"
+    note_skip "${dest#$TARGET_DIR/}"
+    return 0
   fi
+  mkdir -p "$(dirname "$dest")"
+  if [[ "$src" == *.tmpl ]]; then
+    sed "s/{{BOOTSTRAP_DATE}}/$TODAY/g" "$src" > "$dest"
+  else
+    cp "$src" "$dest"
+  fi
+  # Preserve executable bit for shell scripts.
+  [[ "$src" == *.sh ]] && chmod +x "$dest"
+  note_add "${dest#$TARGET_DIR/}"
+}
+
+for entry in "${FILE_MAP[@]}"; do
+  src_rel="${entry%%|*}"
+  dest_rel="${entry##*|}"
+  copy_file "$HARNESS_DIR/$src_rel" "$TARGET_DIR/$dest_rel"
 done
 
-# ---- subdirs (T2/T3 components — bootstrap honours whatever is present) --
-declare -A SUBDIR_TARGETS=(
+# ---- per-directory mapping (whole-dir fan-outs) --------------------------
+declare -A DIR_TARGETS=(
   [commands]=".claude/commands"
   [ci]=".github/workflows"
-  [hooks]=".harness/hooks"
   [scripts]="scripts"
   [decisions]="docs/decisions"
 )
 
-for component in "${!SUBDIR_TARGETS[@]}"; do
+for component in "${!DIR_TARGETS[@]}"; do
   src_dir="$HARNESS_DIR/$component"
   [[ -d "$src_dir" ]] || continue
 
@@ -78,24 +97,13 @@ for component in "${!SUBDIR_TARGETS[@]}"; do
   shopt -u nullglob
   [[ ${#files[@]} -gt 0 ]] || continue
 
-  target_subdir="${SUBDIR_TARGETS[$component]}"
-  mkdir -p "$TARGET_DIR/$target_subdir"
+  target_subdir="${DIR_TARGETS[$component]}"
 
   for f in "${files[@]}"; do
     [[ -f "$f" ]] || continue
     bn="$(basename "$f")"
     dest_name="${bn%.tmpl}"
-    dest="$TARGET_DIR/$target_subdir/$dest_name"
-    if [[ -e "$dest" ]]; then
-      note_skip "$target_subdir/$dest_name"
-    else
-      if [[ "$bn" == *.tmpl ]]; then
-        sed "s/{{BOOTSTRAP_DATE}}/$TODAY/g" "$f" > "$dest"
-      else
-        cp "$f" "$dest"
-      fi
-      note_add "$target_subdir/$dest_name"
-    fi
+    copy_file "$f" "$TARGET_DIR/$target_subdir/$dest_name"
   done
 done
 
