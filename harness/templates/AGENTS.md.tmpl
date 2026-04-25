@@ -1,0 +1,43 @@
+# {{PROJECT_NAME}} — Agent instructions
+
+This file is the AGENTS.md convention used by Cursor, OpenAI Codex, and other autonomous coding agents. The content mirrors `CLAUDE.md`; refer to that file as the single source of truth.
+
+If your agent reads `AGENTS.md` but not `CLAUDE.md`, the binding content is below.
+
+---
+
+## Tier 0 — Entropy
+
+> Every change either fights entropy or feeds it. Default is feeding. Choose.
+
+Before every commit: *am I leaving a broken window?* If yes, fix it now or open an explicit ticket.
+
+---
+
+## Tier 1 — Always-on principles
+
+Full skill at `.claude/skills/design-philosophy/SKILL.md`. Condensed:
+
+**Design:** deep modules · information hiding · pull complexity downward · define errors out · different layer different abstraction.
+**Process:** don't live with broken windows · tracer bullets · reversibility · crash early · DRY · good enough.
+**Discipline:** think before coding · simplicity first · surgical changes · goal-driven execution.
+**Cross-cutting:** design twice · refactor mercilessly · design by contract · test ruthlessly · code is read 10× more than written.
+
+---
+
+## Tier 2 — Pre-commit self-review
+
+Run the 22-item red-flag checklist in `design-philosophy/SKILL.md` before every commit.
+
+---
+
+## Mechanical gates
+
+`kp-sdlc` runs at PreToolUse, pre-commit, and CI. See `CLAUDE.md` for the full pipeline diagram.
+
+---
+
+<!-- project-specific -->
+## {{PROJECT_NAME}}-specific addenda
+
+Layer your addenda here. Mirror them in `CLAUDE.md` so both agent runtimes see the same rules.

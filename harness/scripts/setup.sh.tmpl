@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# {{PROJECT_NAME}} — one-command setup. Bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+#
+# Auto-detects what's in the project and runs the right install steps.
+# Idempotent: safe to re-run.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."  # project root
+
+step() { echo; echo "── $1 ──"; }
+
+# ── Python (uv) ────────────────────────────────────────────────────────
+if [[ -f pyproject.toml ]]; then
+  step "uv sync (Python deps)"
+  command -v uv >/dev/null 2>&1 || { echo "uv not installed; see https://docs.astral.sh/uv/"; exit 1; }
+  uv sync --all-extras --dev
+fi
+
+# ── Node (pnpm) ────────────────────────────────────────────────────────
+if [[ -f pnpm-workspace.yaml ]] || [[ -f package.json ]]; then
+  step "pnpm install"
+  command -v pnpm >/dev/null 2>&1 || { echo "pnpm not installed; see https://pnpm.io/installation"; exit 1; }
+  pnpm install --frozen-lockfile
+fi
+
+# ── pre-commit ─────────────────────────────────────────────────────────
+if [[ -f .pre-commit-config.yaml ]]; then
+  step "pre-commit install"
+  if command -v uv >/dev/null 2>&1; then
+    uv run pre-commit install --hook-type pre-commit --hook-type prepare-commit-msg
+  elif command -v pre-commit >/dev/null 2>&1; then
+    pre-commit install --hook-type pre-commit --hook-type prepare-commit-msg
+  else
+    echo "pre-commit not available; skipping (install via: pip install pre-commit)"
+  fi
+fi
+
+# ── Alembic ────────────────────────────────────────────────────────────
+if [[ -f alembic.ini ]]; then
+  step "alembic upgrade head"
+  if command -v uv >/dev/null 2>&1; then
+    uv run alembic upgrade head || echo "alembic upgrade failed — DATABASE_URL may not be set"
+  fi
+fi
+
+echo
+echo "── done ──"
+echo "Next: ./scripts/check.sh   (lint + typecheck + test + build smoke)"

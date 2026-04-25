@@ -1,0 +1,72 @@
+# pre-commit hooks bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+#
+# Universal hooks only. Language-specific hooks (ruff/mypy for Python,
+# eslint/tsc for TS, gofmt for Go, etc.) layer on top — add them per project.
+#
+# Install:   pre-commit install --hook-type pre-commit --hook-type prepare-commit-msg
+# Run all:   pre-commit run --all-files
+default_language_version:
+  python: python3.12
+
+# Repo-wide exclude. Vendored upstream tools and product docs are untouched
+# unless a hook re-includes them via its own `files:` pattern.
+exclude: ^(tools/qa/|.*/_vendor/|.*\.lock$)
+
+repos:
+  # ── Hygiene ────────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude_types: [markdown]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ── KP_SDLC Quality Gate (vendored under tools/qa/) ────────────────────
+  # PRS scoring + AI/LLM/Prompt/FastAPI/Security packs. Scoped to project
+  # files only — see exclude.
+  - repo: local
+    hooks:
+      - id: quality-gate
+        name: Quality Gate (PRS >= 85)
+        entry: python tools/qa/quality-gate/quality_gate.py --root .
+        language: system
+        files: \.py$
+        exclude: ^(tools/qa/|.*/_vendor/|migrations/)
+        pass_filenames: true
+        stages: [pre-commit]
+
+  # ── KP_SDLC Cathedral Keeper (vendored under tools/qa/) ────────────────
+  - repo: local
+    hooks:
+      - id: cathedral-keeper-diff
+        name: Cathedral Keeper (architecture, diff mode)
+        entry: python tools/qa/cathedral-keeper/ck.py analyze --root . --mode diff --base origin/main
+        language: system
+        files: \.py$
+        exclude: ^(tools/qa/|.*/_vendor/|migrations/)
+        pass_filenames: false
+        stages: [pre-commit]
+        verbose: true
+
+  # ── Red-flag attestation (kp-sdlc/harness) ─────────────────────────────
+  # Appends a Self-review skeleton to the commit message if missing.
+  # The agent fills it in based on .claude/skills/design-philosophy/SKILL.md
+  # Tier 2 (22 red flags). Non-blocking — does not refuse the commit.
+  - repo: local
+    hooks:
+      - id: red-flag-attestation
+        name: Red-flag attestation (kp-sdlc/harness)
+        entry: bash .harness/hooks/red-flag-attestation.sh
+        language: system
+        stages: [prepare-commit-msg]
+        always_run: true
+        pass_filenames: true

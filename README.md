@@ -12,6 +12,15 @@ AI-assisted coding produces code that works in demos but fails in production —
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
+│                         JUDGE  (agent-facing)                        │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐│
+│  │  Harness  —  skills + CLAUDE.md/AGENTS.md templates +           ││
+│  │             slash commands + CI workflow templates +            ││
+│  │             pre-commit hooks + bootstrap.sh                     ││
+│  │  Philosophy: Karpathy + Ousterhout + Pragmatic + entropy        ││
+│  └─────────────────────────────────────────────────────────────────┘│
+├─────────────────────────────────────────────────────────────────────┤
 │                         DETECT                                       │
 │                                                                      │
 │  ┌──────────────────────┐    ┌────────────────────────────────────┐ │
@@ -39,6 +48,24 @@ AI-assisted coding produces code that works in demos but fails in production —
 ```
 
 ## Components
+
+### Harness (`harness/`)
+
+**Agent-facing layer.** Where the other four components are mechanical (DETECT / FIX / REPORT), the harness layer is where **judgment** lives — the philosophy, conventions, and Claude/Cursor/Codex orchestration that an agentic codebase needs but no linter can enforce.
+
+Synthesises four sources into one tiered system:
+- **Tier 0** — software-entropy meta-principle ("am I leaving a broken window?")
+- **Tier 1** — 22 always-on principles from Karpathy + Ousterhout (*A Philosophy of Software Design*) + Hunt & Thomas (*The Pragmatic Programmer*)
+- **Tier 2** — 22-item red-flag checklist for pre-commit self-review
+
+Ships skills (`design-philosophy`, `coding-discipline`), CLAUDE.md / AGENTS.md templates, and an idempotent `bootstrap.sh` that drops the layer into any project. Slash commands, ADR templates, CI workflow templates, and pre-commit hooks land in subsequent updates.
+
+```bash
+# From any target project root:
+bash /path/to/KP_SDLC/harness/bootstrap.sh
+```
+
+See `harness/README.md` for full layout, sources, and the consumption story.
 
 ### Quality Gate (`quality-gate/`)
 
