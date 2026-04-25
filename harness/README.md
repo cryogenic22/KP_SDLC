@@ -17,18 +17,18 @@ KP_SDLC
 
 ## What it ships
 
-| Subdir | Purpose | T1 | T2 | T3 |
-|---|---|---|---|---|
-| `skills/` | `.claude/skills/*` for design-philosophy + coding-discipline | ✅ | | |
-| `templates/` | `CLAUDE.md` + `AGENTS.md` templates with placeholders | ✅ | | |
-| `bootstrap.sh` | Idempotent installer; copies harness into target project | ✅ | | |
-| `commands/` | Slash commands (`/principles`, `/review`, `/entropy-check`, `/before-i-commit`) | | ✅ | |
-| `decisions/` | ADR templates incl. design-philosophy ADR | | ✅ | |
-| `hooks/` | Pre-commit hook config + red-flag-attestation script | | ✅ | |
-| `ci/` | GitHub Actions workflow templates (quality, web, eval, second-pass-reviewer) | | | ✅ |
-| `scripts/` | `setup.sh` and `check.sh` one-command entry points | | | ✅ |
+| Subdir | Purpose | Status |
+|---|---|---|
+| `skills/` | `.claude/skills/*` for design-philosophy + coding-discipline | ✅ |
+| `templates/` | `CLAUDE.md` + `AGENTS.md` + `PULL_REQUEST_TEMPLATE.md` | ✅ |
+| `commands/` | Slash commands (`/principles`, `/review`, `/entropy-check`, `/before-i-commit`) | ✅ |
+| `decisions/` | ADR templates including the design-philosophy ADR | ✅ |
+| `hooks/` | Pre-commit base config + `red-flag-attestation.sh` + `second_pass_reviewer.py` | ✅ |
+| `ci/` | GitHub Actions workflow templates: `quality.yml`, `web.yml`, `eval.yml`, `second-pass-reviewer.yml` | ✅ |
+| `scripts/` | `setup.sh` and `check.sh` one-command entry points | ✅ |
+| `bootstrap.sh` | Idempotent installer | ✅ |
 
-T1 lands enough to consume from any project (skills + Claude/Agents docs + bootstrap). T2 + T3 add the runtime hooks and CI templates progressively.
+The harness is consumable from any project today.
 
 ## Sources of philosophy
 
@@ -61,21 +61,68 @@ bash /path/to/KP_SDLC/harness/bootstrap.sh /path/to/some-project
 
 The script is idempotent. Re-run after any harness update — existing files are skipped, new ones added. To force overwrite an individual file: delete it first, then re-run.
 
-### What gets installed
+### What gets installed (20 files at first bootstrap)
 
 ```
 target-project/
-├── CLAUDE.md                              ← from templates/CLAUDE.md.tmpl
-├── AGENTS.md                              ← from templates/AGENTS.md.tmpl
+├── CLAUDE.md                                       Tier 0 + Tier 1 condensed
+├── AGENTS.md                                       same content for AGENTS.md convention
 ├── .claude/
 │   ├── skills/
-│   │   ├── design-philosophy/SKILL.md     ← Tier 1 + Tier 2 (Karpathy + Ousterhout + Pragmatic + entropy)
-│   │   └── coding-discipline/SKILL.md     ← Karpathy guidelines (MIT, attributed)
-│   └── commands/                          ← T2: slash commands
-├── .github/workflows/                     ← T3: CI templates
-├── docs/decisions/                        ← T2: ADR-0001 design philosophy
-└── scripts/                               ← T3: setup.sh, check.sh
+│   │   ├── design-philosophy/SKILL.md              Tier 0/1/2 — 4 sources
+│   │   └── coding-discipline/SKILL.md              Karpathy guidelines (MIT)
+│   └── commands/
+│       ├── principles.md                           /principles
+│       ├── review.md                               /review (22-flag walk)
+│       ├── entropy-check.md                        /entropy-check
+│       └── before-i-commit.md                      /before-i-commit
+├── .github/
+│   ├── PULL_REQUEST_TEMPLATE.md                    Spec/Summary/Verification/Self-review
+│   └── workflows/
+│       ├── quality.yml                             ruff/mypy/pytest/QG/CK + PR template lint + diff size
+│       ├── web.yml                                 pnpm typecheck/lint/test/build/size
+│       ├── eval.yml                                golden suite (skip-without-key)
+│       └── second-pass-reviewer.yml                fresh-context Claude review on PR open
+├── .harness/
+│   └── hooks/
+│       ├── red-flag-attestation.sh                 prepare-commit-msg: appends Self-review skeleton
+│       └── second_pass_reviewer.py                 stdlib-only Claude API client (used by CI)
+├── .pre-commit-config.yaml                         universal hygiene + QG + CK + red-flag-attestation
+├── docs/decisions/
+│   ├── _template.md                                ADR template
+│   └── 0001-design-philosophy.md                   adoption ADR (cites all 4 sources)
+└── scripts/
+    ├── setup.sh                                    one-command install (auto-detects uv/pnpm/pre-commit/alembic)
+    └── check.sh                                    one-command smoke (lint+typecheck+test+build+QG+CK)
 ```
+
+### Substitute placeholders after bootstrap
+
+The bootstrap fills `{{BOOTSTRAP_DATE}}` automatically. Other placeholders are left for you to substitute (one-shot sed):
+
+```bash
+PROJECT_NAME="myproject"
+PYTHON_PACKAGE="myproject"           # often same as PROJECT_NAME
+FRONTEND_WORKSPACE="myproject_web"   # for monorepos with a frontend
+POSTGRES_USER="myproject"
+POSTGRES_PASSWORD="myproject"        # CI-only — production envs use repo secrets
+POSTGRES_DB="myproject"
+EVAL_MODULE="tests.eval.runner"      # if you adopt the golden eval pattern
+
+find . -type f \( -name "*.md" -o -name "*.sh" -o -name "*.yml" \) \
+  -not -path "./.git/*" -not -path "./node_modules/*" \
+  -exec sed -i \
+    -e "s/{{PROJECT_NAME}}/$PROJECT_NAME/g" \
+    -e "s/{{PYTHON_PACKAGE}}/$PYTHON_PACKAGE/g" \
+    -e "s/{{FRONTEND_WORKSPACE}}/$FRONTEND_WORKSPACE/g" \
+    -e "s/{{POSTGRES_USER}}/$POSTGRES_USER/g" \
+    -e "s/{{POSTGRES_PASSWORD}}/$POSTGRES_PASSWORD/g" \
+    -e "s/{{POSTGRES_DB}}/$POSTGRES_DB/g" \
+    -e "s/{{EVAL_MODULE}}/$EVAL_MODULE/g" \
+    {} \;
+```
+
+If your project has no Postgres / no frontend / no eval suite, delete the corresponding workflow file or block.
 
 ### Then
 

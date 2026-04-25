@@ -1,0 +1,64 @@
+# Frontend CI — bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+# Substitute: {{FRONTEND_WORKSPACE}} (pnpm workspace name, e.g. atlas_web).
+name: web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "{{FRONTEND_WORKSPACE}}/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - ".npmrc"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "{{FRONTEND_WORKSPACE}}/**"
+      - "package.json"
+      - "pnpm-workspace.yaml"
+      - ".npmrc"
+      - ".github/workflows/web.yml"
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: typecheck · lint · unit · build · size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm typecheck
+      - name: Lint
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm lint
+      - name: Custom rule tests
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm test:rules
+        continue-on-error: true   # only meaningful if you have eslint-rules/__tests__/
+      - name: Unit tests
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm test
+      - name: Codegen drift
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm codegen:check
+        continue-on-error: true
+      - name: Build
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm build
+      - name: Bundle size budget
+        working-directory: {{FRONTEND_WORKSPACE}}
+        run: pnpm size
+        continue-on-error: true   # only enforces if size-limit is configured

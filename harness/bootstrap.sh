@@ -54,6 +54,7 @@ FILE_MAP=(
   "templates/PULL_REQUEST_TEMPLATE.md.tmpl|.github/PULL_REQUEST_TEMPLATE.md"
   "hooks/pre-commit-config.yaml.tmpl|.pre-commit-config.yaml"
   "hooks/red-flag-attestation.sh|.harness/hooks/red-flag-attestation.sh"
+  "hooks/second_pass_reviewer.py|.harness/hooks/second_pass_reviewer.py"
 )
 
 copy_file() {

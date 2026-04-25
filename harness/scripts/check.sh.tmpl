@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# {{PROJECT_NAME}} — one-command smoke check. Bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+#
+# Auto-detects what's in the project and runs the right checks. Mirrors
+# CI gates locally; if this passes, CI should too.
+set -uo pipefail
+
+cd "$(dirname "$0")/.."  # project root
+
+failed=()
+ok() { echo "  ✓ $1"; }
+fail() { echo "  ✗ $1"; failed+=("$1"); }
+
+step() { echo; echo "── $1 ──"; }
+
+# ── Python ──────────────────────────────────────────────────────────────
+if [[ -f pyproject.toml ]]; then
+  step "Python: ruff check"
+  if uv run ruff check {{PYTHON_PACKAGE}} tests 2>&1 | tail -3; then ok "ruff check"; else fail "ruff check"; fi
+
+  step "Python: ruff format --check"
+  if uv run ruff format --check {{PYTHON_PACKAGE}} tests 2>&1 | tail -3; then ok "ruff format"; else fail "ruff format"; fi
+
+  step "Python: mypy"
+  if uv run mypy {{PYTHON_PACKAGE}} 2>&1 | tail -3; then ok "mypy"; else fail "mypy"; fi
+
+  step "Python: pytest (unit + eval)"
+  if uv run pytest tests/unit tests/eval -q 2>&1 | tail -3; then ok "pytest"; else fail "pytest"; fi
+fi
+
+# ── Frontend (pnpm workspace) ──────────────────────────────────────────
+if [[ -f pnpm-workspace.yaml ]]; then
+  step "Frontend: typecheck"
+  if pnpm --filter {{FRONTEND_WORKSPACE}} typecheck 2>&1 | tail -3; then ok "typecheck"; else fail "typecheck"; fi
+
+  step "Frontend: lint"
+  if pnpm --filter {{FRONTEND_WORKSPACE}} lint 2>&1 | tail -3; then ok "lint"; else fail "lint"; fi
+
+  step "Frontend: test"
+  if pnpm --filter {{FRONTEND_WORKSPACE}} test 2>&1 | tail -3; then ok "test"; else fail "test"; fi
+
+  step "Frontend: build"
+  if pnpm --filter {{FRONTEND_WORKSPACE}} build 2>&1 | tail -3; then ok "build"; else fail "build"; fi
+fi
+
+# ── KP_SDLC quality-gate (if vendored) ─────────────────────────────────
+if [[ -f tools/qa/quality-gate/quality_gate.py ]]; then
+  step "KP_SDLC: quality-gate"
+  if python tools/qa/quality-gate/quality_gate.py --config .quality-gate.json {{PYTHON_PACKAGE}} tests .github/scripts --json > /dev/null 2>&1; then ok "QG"; else fail "QG"; fi
+fi
+
+# ── KP_SDLC cathedral-keeper (if vendored) ─────────────────────────────
+if [[ -f tools/qa/cathedral-keeper/ck.py ]]; then
+  step "KP_SDLC: cathedral-keeper"
+  if python tools/qa/cathedral-keeper/ck.py analyze --root . --blast-radius > /dev/null 2>&1; then ok "CK"; else fail "CK"; fi
+fi
+
+echo
+if [[ ${#failed[@]} -eq 0 ]]; then
+  echo "── all checks passed ──"
+  exit 0
+else
+  echo "── ${#failed[@]} check(s) failed ──"
+  printf "  ✗ %s\n" "${failed[@]}"
+  exit 1
+fi

@@ -1,0 +1,94 @@
+# Eval golden suite — bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+# Gracefully skips agent-dependent suites if ANTHROPIC_API_KEY is not configured.
+# Substitute: {{EVAL_MODULE}} (default: tests.eval.runner).
+name: eval
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-suite:
+    name: Golden suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.9.18"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Determine eval scope
+        id: scope
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "scope=harness-only" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run eval suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVAL_SCOPE: ${{ steps.scope.outputs.scope }}
+        run: uv run python -m {{EVAL_MODULE}} --scope "$EVAL_SCOPE" --report eval_results/latest.json
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: eval_results/latest.json
+          if-no-files-found: warn
+
+      - name: Comment on PR with eval delta
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'eval_results/latest.json';
+            if (!fs.existsSync(path)) {
+              github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '⚠️ Eval report missing — runner failed to produce `eval_results/latest.json`.'
+              });
+              return;
+            }
+            const r = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const lines = [
+              '### Golden eval suite',
+              '',
+              `**Scope:** \`${r.scope}\``,
+              `**Cases:** ${r.passed}/${r.total} passed (${r.skipped} skipped)`,
+              `**Pass rate:** ${(100 * r.passed / Math.max(1, r.total - r.skipped)).toFixed(1)}%`,
+              '',
+              r.failures && r.failures.length
+                ? '<details><summary>Failures</summary>\n\n' +
+                  r.failures.slice(0, 10).map(f => `- \`${f.id}\` — ${f.reason}`).join('\n') +
+                  '\n\n</details>'
+                : '✅ No failures.',
+            ].join('\n');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: lines
+            });

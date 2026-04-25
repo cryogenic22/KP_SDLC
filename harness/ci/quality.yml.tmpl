@@ -1,0 +1,154 @@
+# Quality gate — bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+# Substitute placeholders: {{PYTHON_PACKAGE}}, {{POSTGRES_USER}}, {{POSTGRES_PASSWORD}}, {{POSTGRES_DB}}.
+# Three layers: mechanical (ruff/mypy/QG/CK/tests) + process (PR template lint) + surface (diff size).
+name: quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mechanical:
+    name: Mechanical guardrails
+    runs-on: ubuntu-latest
+    services:
+      # If your project doesn't need Postgres, delete this services block + the env section below.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: {{POSTGRES_USER}}
+          POSTGRES_PASSWORD: {{POSTGRES_PASSWORD}}
+          POSTGRES_DB: {{POSTGRES_DB}}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://{{POSTGRES_USER}}:{{POSTGRES_PASSWORD}}@localhost:5432/{{POSTGRES_DB}}
+      DATABASE_URL_SYNC: postgresql+psycopg://{{POSTGRES_USER}}:{{POSTGRES_PASSWORD}}@localhost:5432/{{POSTGRES_DB}}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.9.18"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff (lint)
+        run: uv run ruff check {{PYTHON_PACKAGE}} tests
+
+      - name: Ruff (format check)
+        run: uv run ruff format --check {{PYTHON_PACKAGE}} tests
+
+      - name: Mypy
+        run: uv run mypy {{PYTHON_PACKAGE}}
+
+      - name: Alembic — upgrade head (sanity, if alembic.ini present)
+        run: |
+          if [ -f alembic.ini ]; then uv run alembic upgrade head; else echo "no alembic.ini, skipping"; fi
+
+      - name: Pytest with coverage (unit + integration)
+        run: uv run pytest --cov={{PYTHON_PACKAGE}} --cov-report=xml --cov-report=term --cov-fail-under=80
+
+      - name: Quality Gate (PRS ≥ 85, hard block)
+        run: python tools/qa/quality-gate/quality_gate.py --config .quality-gate.json {{PYTHON_PACKAGE}} tests .github/scripts --json --sarif qg.sarif
+
+      - name: Cathedral Keeper (architecture)
+        run: python tools/qa/cathedral-keeper/ck.py analyze --root . --blast-radius
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: qg.sarif
+        continue-on-error: true
+
+  process:
+    name: Process guardrails
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: PR template lint
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python .github/scripts/check_pr_template.py
+
+  surface:
+    name: Reviewer surfaces (non-blocking)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff size
+        id: diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          ADDED=$(git diff --shortstat "$BASE_SHA"...HEAD | awk '{print $4}')
+          DELETED=$(git diff --shortstat "$BASE_SHA"...HEAD | awk '{print $6}')
+          FILES=$(git diff --name-only "$BASE_SHA"...HEAD | wc -l)
+          echo "added=${ADDED:-0}" >> "$GITHUB_OUTPUT"
+          echo "deleted=${DELETED:-0}" >> "$GITHUB_OUTPUT"
+          echo "files=${FILES:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Post diff-size summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const added   = `${{ steps.diff.outputs.added }}`;
+            const deleted = `${{ steps.diff.outputs.deleted }}`;
+            const files   = `${{ steps.diff.outputs.files }}`;
+            const total   = (parseInt(added)||0) + (parseInt(deleted)||0);
+            const sizeFlag = total > 500
+              ? '⚠️ **Diff > 500 LOC** — review against the cited spec scope (Karpathy: surgical changes).'
+              : '✅ Diff size within typical bounds.';
+            const body = [
+              '### Reviewer surfaces',
+              '',
+              `**Diff:** ${files} files · +${added} / -${deleted} lines`,
+              '',
+              sizeFlag,
+              '',
+              '_Reviewer surfaces are informational. Mechanical guardrails (ruff/mypy/QG/CK/tests) gate the merge._'
+            ].join('\n');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
