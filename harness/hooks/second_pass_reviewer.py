@@ -30,6 +30,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -132,7 +133,7 @@ def main() -> int:
     diff_limit = int(os.environ.get("SECOND_PASS_DIFF_LIMIT", DEFAULT_DIFF_LIMIT))
 
     try:
-        with open(args.principles, encoding="utf-8") as f:
+        with Path(args.principles).open(encoding="utf-8") as f:
             principles = f.read()
     except FileNotFoundError:
         print(f"[second-pass-reviewer] principles file not found: {args.principles}", file=sys.stderr)
