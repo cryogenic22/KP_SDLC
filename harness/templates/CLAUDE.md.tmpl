@@ -1,0 +1,85 @@
+# {{PROJECT_NAME}} — Claude Code instructions
+
+Last bootstrapped from `kp-sdlc/harness` on `{{BOOTSTRAP_DATE}}`. Edit freely; mark project-specific sections with `<!-- project-specific -->`.
+
+---
+
+## Tier 0 — The meta-principle
+
+> Every change either fights entropy or feeds it. Default is feeding. Choose.
+
+Codebases drift toward incoherence unless an active force pushes the other way. Before every commit ask: *am I leaving a broken window?* If yes, fix it now or open an explicit ticket.
+
+---
+
+## Tier 1 — Always-on principles
+
+The full skill is at `.claude/skills/design-philosophy/SKILL.md` — read it once per session. The condensed list:
+
+**Design (Ousterhout):** deep modules · information hiding (no leakage) · pull complexity downward · define errors out of existence · different layer different abstraction.
+
+**Process (Pragmatic):** don't live with broken windows · tracer bullets · reversibility · crash early · DRY · good enough software.
+
+**Discipline (Karpathy):** think before coding · simplicity first · surgical changes · goal-driven execution.
+
+**Cross-cutting:** design twice · refactor mercilessly · design by contract (types/asserts/schemas) · test ruthlessly · code is read 10× more than written.
+
+---
+
+## Tier 2 — Pre-commit self-review
+
+Run the 22-item red-flag checklist (in `design-philosophy/SKILL.md`) before every commit. If any flag applies, fix it or document why it doesn't.
+
+The pre-commit hook `red-flag-attestation` will prompt for this. The CI `second-pass-reviewer` job runs the checklist independently against the diff.
+
+---
+
+## Mechanical gates (already in pipeline)
+
+The `kp-sdlc` quality platform runs at three points:
+
+| When | What | Where it lives |
+|---|---|---|
+| `PreToolUse` (Edit/Write) | JIT inject relevant principle subset | `.claude/settings.json` |
+| Pre-commit | ruff, format, mypy, QG (PRS ≥ 85), CK (architecture), red-flag attestation | `.pre-commit-config.yaml` |
+| CI on PR | All of the above + tests + coverage + bundle size + second-pass reviewer | `.github/workflows/` |
+
+Mechanical rules don't need agent attention to enforce — they survive any context state.
+
+---
+
+## Tooling commands
+
+```bash
+# Full quality run
+make report           # QG + CK + HTML report
+make sarif            # SARIF for GitHub Code Scanning
+
+# One-command setup / smoke
+./scripts/setup.sh    # install deps, hooks, migrations
+./scripts/check.sh    # lint + typecheck + test + build (smoke)
+```
+
+---
+
+## Slash commands available
+
+- `/principles` — print Tier 0 + Tier 1 reminder
+- `/review` — run Tier 2 red-flag checklist on the current diff
+- `/entropy-check` — explicit broken-window scan
+- `/before-i-commit` — full pre-commit attestation walkthrough
+
+---
+
+<!-- project-specific -->
+## {{PROJECT_NAME}}-specific addenda
+
+Add project-specific principles here (e.g. "All values that came from external sources must travel in a `Cited<T>` envelope"). These layer ON TOP of the always-on principles above and never replace them.
+
+The convention is to number addenda `A1`, `A2`, ... so they can be referenced in code review:
+
+| ID | Addendum | Why |
+|---|---|---|
+| A1 | _example_ | _example_ |
+
+Project-specific addenda also live in `.claude/skills/{{PROJECT_NAME}}-coding-discipline/SKILL.md` for skill-load context.
