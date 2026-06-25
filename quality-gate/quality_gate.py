@@ -1193,8 +1193,10 @@ class QualityGate:
                 return files
 
         # Fallback: check all included paths via filesystem walk.
+        # An empty include list must mean "the whole root", not "nothing" —
+        # otherwise a non-git project silently scans zero files.
         files: list[Path] = []
-        for include_path in self.config.get("paths", {}).get("include", ["."]):
+        for include_path in (self.config.get("paths", {}).get("include") or ["."]):
             path = self.root_dir / include_path
             if not path.exists():
                 continue
@@ -1352,12 +1354,36 @@ class QualityGate:
 
     def run(self, paths: list[str] | None = None, staged_only: bool = False) -> CheckResult:
         """Run quality gate checks."""
+        self.issues = []  # reset accumulator: re-runs on one instance must not pile up
         files = self.get_files_to_check(paths, staged_only)
 
         if not files:
+            # Legitimate no-op: a --staged run with nothing staged, or explicit
+            # paths / --paths-from that contained no code files (e.g. a docs-only
+            # change). There is nothing to gate, so it passes quietly.
+            if staged_only or paths:
+                if not self._quiet:
+                    reason = ("No staged files to check." if staged_only
+                              else "No code files among the supplied paths.")
+                    print(f"[QualityGate] {reason}")
+                return CheckResult(passed=True, stats={"files_checked": 0})
+            # A full-project scan (no explicit paths, not --staged) that found
+            # nothing means the gate checked nothing — fail closed, not a green
+            # pass (no vacuous green).
+            msg = (
+                "No files were scanned, so nothing was checked. A gate that "
+                "checks nothing must not pass. Verify the root contains code "
+                "files and that paths.include / paths.exclude are not filtering "
+                "everything out."
+            )
             if not self._quiet:
-                print("[QualityGate] No files to check.")
-            return CheckResult(passed=True, stats={"files_checked": 0})
+                print(f"[QualityGate] {msg}")
+            self.issues.append(Issue(
+                file="(scan)", line=0, column=0,
+                rule="no_files_checked", severity=Severity.ERROR, message=msg,
+                suggestion="Run from the project root, pass explicit paths, or set paths.include.",
+            ))
+            return CheckResult(passed=False, issues=self.issues, stats={"files_checked": 0, "error": 1})
 
         if not self._quiet:
             print(f"[QualityGate] Checking {len(files)} files...")
