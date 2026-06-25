@@ -57,6 +57,20 @@
         "fail_threshold": 25
       }
     },
+    "CK-DATA-SCHEMA-DRIFT": {
+      "enabled": false,
+      "severity": "high",
+      "_description": "Pydantic schema drift: compares model definitions against the baseline snapshot captured by `ck baseline`. Flags removed fields, type changes, removed models, and new required fields without defaults. Emits an info finding when no baseline exists.",
+      "config": {
+        "baseline_path": ".quality-reports/cathedral-keeper/baseline.json"
+      }
+    },
+    "CK-AGENTIC-HARNESS": {
+      "enabled": false,
+      "severity": "medium",
+      "_description": "Agentic harness architecture: scans for the 9 infrastructure modules an agentic system needs (tool registry, permission system, session persistence, state separation, token budget, observability, verification, agent types, harness pattern). Only fires on agentic codebases.",
+      "config": {}
+    },
     "CK-ARCH-SERVICE-BOUNDARIES": {
       "enabled": false,
       "severity": "high",

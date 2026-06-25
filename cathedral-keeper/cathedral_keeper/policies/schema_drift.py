@@ -8,6 +8,8 @@ fields without defaults, and removed models.
 from __future__ import annotations
 
 import ast
+import json
+from pathlib import Path
 from typing import Any, Dict, List
 
 from cathedral_keeper.models import Evidence, Finding
@@ -149,6 +151,128 @@ def compare_schemas(baseline: dict, current: dict) -> list[dict]:
 
 
 # -- Full Policy Check -------------------------------------------------------
+
+
+# -- Snapshot + Runner Wiring ------------------------------------------------
+
+
+def _safe_rel(path: Path, root: Any) -> str:
+    """Best-effort path relative to root, with forward slashes."""
+    try:
+        return str(Path(path).resolve().relative_to(Path(root).resolve())).replace("\\", "/")
+    except (ValueError, OSError):
+        return str(path).replace("\\", "/")
+
+
+def capture_schemas(root: Any, files: List[Any]) -> Dict[str, Any]:
+    """Snapshot Pydantic models for each file.
+
+    Returns ``{file_rel: {model_name: {"fields": {...}}}}``. Files that
+    cannot be read or parsed are skipped (a file with a syntax error has
+    no extractable models — this is not silent data loss). Files with no
+    Pydantic models are omitted to keep the snapshot small.
+    """
+    out: Dict[str, Any] = {}
+    for f in files:
+        try:
+            code = Path(f).read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        try:
+            models = extract_pydantic_models(code)
+        except SyntaxError:
+            continue
+        if not models:
+            continue
+        out[_safe_rel(Path(f), root)] = models
+    return out
+
+
+def _no_baseline_finding(rel: str, bpath: Path, *, status: str, reason: str) -> Finding:
+    """Emit a single finding when no usable schema baseline is available.
+
+    ``status`` distinguishes a genuinely missing baseline ("no_baseline")
+    from one that exists but cannot be parsed ("baseline_unreadable"), so
+    an operator is not told to run `ck baseline` when the real problem is a
+    corrupt file.
+    """
+    unreadable = status == "baseline_unreadable"
+    return Finding(
+        policy_id="CK-DATA-SCHEMA-DRIFT",
+        title="Schema baseline unreadable" if unreadable else "No schema baseline found",
+        severity="low" if unreadable else "info",
+        confidence="high",
+        why_it_matters=(
+            "Schema-drift detection requires a readable baseline snapshot of Pydantic "
+            "models. "
+            + (
+                "The baseline file exists but could not be parsed; re-create it. "
+                if unreadable
+                else "Run `ck baseline` to capture one. "
+            )
+            + "Without it, breaking schema changes (removed fields, type changes) "
+            "cannot be detected."
+        ),
+        evidence=[
+            Evidence(file=rel, line=0, snippet=reason, note=f"Baseline path: {bpath}")
+        ],
+        fix_options=["Run `ck baseline --root .` to (re)capture the schema baseline."],
+        verification=["ck baseline --root . && ck analyze --root ."],
+        metadata={"baseline_path": rel, "status": status},
+    )
+
+
+def check_schema_drift_policy(
+    *,
+    root: Any,
+    files: List[Any],
+    baseline_path: Any,
+) -> List[Finding]:
+    """Runner-facing wrapper: compare current models to the baseline snapshot.
+
+    Compares each scanned file's Pydantic models against that *same file's*
+    entry in the baseline written by ``ck baseline``. This per-file
+    comparison is independent of the order ``files`` are supplied in and is
+    immune to same-named models in different files colliding — unlike a
+    flat name-keyed merge.
+
+    Files present in the baseline but not in the current scan (e.g. diff
+    mode, or a file simply not passed) are skipped rather than reported as
+    wholesale removals: this under-reports a deleted file's models but never
+    fabricates a removal for a file we did not look at.
+
+    When no usable baseline exists, emits a single finding so "drift
+    detection has not run" is never confused with "no drift found"
+    (conservation / no vacuous green).
+    """
+    bpath = Path(baseline_path)
+    rel = _safe_rel(bpath, root)
+
+    if not bpath.exists():
+        return [_no_baseline_finding(rel, bpath, status="no_baseline",
+                                     reason="(baseline file not found)")]
+
+    try:
+        baseline = json.loads(bpath.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return [_no_baseline_finding(rel, bpath, status="baseline_unreadable",
+                                     reason=f"(baseline could not be read: {exc})")]
+
+    baseline_schemas = (baseline or {}).get("schemas")
+    if not baseline_schemas:
+        return [_no_baseline_finding(rel, bpath, status="no_baseline",
+                                     reason="(no 'schemas' section in baseline)")]
+
+    current_schemas = capture_schemas(root, files)
+
+    findings: List[Finding] = []
+    for file_rel in sorted(current_schemas.keys()):
+        base_models = baseline_schemas.get(file_rel) or {}
+        if not base_models:
+            continue  # new file: nothing in the baseline to compare against
+        cur_models = current_schemas.get(file_rel) or {}
+        findings.extend(check_schema_drift(base_models, cur_models, file_path=file_rel))
+    return findings
 
 
 def check_schema_drift(

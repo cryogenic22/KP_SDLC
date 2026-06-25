@@ -12,6 +12,7 @@ from cathedral_keeper.integrations.registry import run_integration
 from cathedral_keeper.integrations.types import IntegrationContext, parse_enabled_integrations
 from cathedral_keeper.models import Evidence, Finding, normalize_path, severity_rank
 from cathedral_keeper.path_glob import filter_paths
+from cathedral_keeper.policies.agentic_harness import check_agentic_harness_policy
 from cathedral_keeper.policies.boundaries import check_boundaries
 from cathedral_keeper.policies.config_sprawl import check_config_sprawl
 from cathedral_keeper.policies.cycles import check_cycles
@@ -20,6 +21,7 @@ from cathedral_keeper.policies.dependency_health import check_dependency_health
 from cathedral_keeper.policies.drift import check_drift, compute_metrics, save_baseline
 from cathedral_keeper.policies.env_parity import check_env_parity
 from cathedral_keeper.policies.layer_direction import check_layer_direction
+from cathedral_keeper.policies.schema_drift import capture_schemas, check_schema_drift_policy
 from cathedral_keeper.policies.service_boundaries import check_service_boundaries
 from cathedral_keeper.policies.test_alignment import check_test_alignment
 from cathedral_keeper.policies.test_coverage import check_test_coverage, detect_test_edges
@@ -71,14 +73,20 @@ def run_baseline(args: Any) -> int:
         root=root, files=files, python_roots=python_roots, policies_cfg=cfg.policies,
     )
 
+    # Capture the Pydantic model snapshot so CK-DATA-SCHEMA-DRIFT has a
+    # baseline to compare against. Stored alongside metrics in the same file.
+    schemas = capture_schemas(root, files)
+
     drift_cfg = (cfg.policies.get("CK-ARCH-DRIFT") or {}).get("config") or cfg.policies.get("CK-ARCH-DRIFT") or {}
     baseline_rel = str(drift_cfg.get("baseline_path", ".quality-reports/cathedral-keeper/baseline.json"))
     baseline_path = root / baseline_rel
 
-    path = save_baseline(root=root, metrics=metrics, baseline_path=baseline_path)
+    path = save_baseline(root=root, metrics=metrics, baseline_path=baseline_path, schemas=schemas)
+    model_count = sum(len(m) for m in schemas.values())
     print(f"[CK] Baseline saved to: {path}")
     print(f"[CK] Metrics: {len(files)} modules, {metrics['total_import_edges']} edges, "
-          f"{metrics['cycle_count']} cycles, {metrics['dead_modules']} dead modules")
+          f"{metrics['cycle_count']} cycles, {metrics['dead_modules']} dead modules, "
+          f"{model_count} pydantic models")
     return 0
 
 
@@ -285,6 +293,13 @@ def _run_policies(*, root: Path, cfg: CKConfig, files: List[Path]) -> List[Findi
         findings.extend(check_dependency_health(root=root, cfg=policies.get("CK-ARCH-DEPENDENCY-HEALTH") or {}, files=files, python_roots=python_roots))
     if _enabled(policies, "CK-ARCH-DRIFT"):
         findings.extend(check_drift(root=root, cfg=policies.get("CK-ARCH-DRIFT") or {}, files=files, python_roots=python_roots, policies_cfg=policies))
+    if _enabled(policies, "CK-DATA-SCHEMA-DRIFT"):
+        sd_cfg = (policies.get("CK-DATA-SCHEMA-DRIFT") or {}).get("config") or {}
+        baseline_rel = str(sd_cfg.get("baseline_path", ".quality-reports/cathedral-keeper/baseline.json"))
+        findings.extend(check_schema_drift_policy(root=root, files=files, baseline_path=root / baseline_rel))
+    if _enabled(policies, "CK-AGENTIC-HARNESS"):
+        file_contents = _read_file_contents(root=root, files=files)
+        findings.extend(check_agentic_harness_policy(root=root, files=files, file_contents=file_contents))
     if _enabled(policies, "CK-ARCH-TEST-COVERAGE"):
         tc_cfg = (policies.get("CK-ARCH-TEST-COVERAGE") or {}).get("config") or {}
         mod_index = build_module_index(root=root, python_roots=python_roots)
@@ -300,6 +315,25 @@ def _run_policies(*, root: Path, cfg: CKConfig, files: List[Path]) -> List[Findi
 def _enabled(policies: dict, pid: str) -> bool:
     p = policies.get(pid) or {}
     return bool(p.get("enabled", False))
+
+
+def _read_file_contents(*, root: Path, files: List[Path]) -> dict:
+    """Read source for each target file, keyed by repo-relative path.
+
+    Used by policies that scan content rather than the import graph
+    (e.g. CK-AGENTIC-HARNESS). Unreadable files are skipped, not faked.
+    """
+    out: dict = {}
+    for f in files:
+        try:
+            rel = normalize_path(str(f.resolve().relative_to(root.resolve())))
+        except (ValueError, OSError):
+            rel = normalize_path(str(f))
+        try:
+            out[rel] = f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+    return out
 
 
 def _exit_code(findings: List[Finding], *, threshold: str) -> int:
