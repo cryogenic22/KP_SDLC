@@ -37,7 +37,7 @@ CK can integrate with SDLC tools by contract, without depending on them:
 ## Quick Start (this repo)
 
 ```bash
-python medcontent-ai-platform/cathedral-keeper/ck.py analyze --root .
+python cathedral-keeper/ck.py analyze --root .
 ```
 
 Outputs:
@@ -53,7 +53,7 @@ Outputs:
 
 ## Notes
 
-- Architecture/value analysis: `medcontent-ai-platform/cathedral-keeper/ANALYSIS.md`
+- Architecture/value analysis: `cathedral-keeper/ANALYSIS.md`
 
 ## Portability
 

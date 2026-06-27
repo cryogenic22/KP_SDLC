@@ -245,4 +245,4 @@ Two workflow templates in `fix-engine/workflows/`:
 
 ## License
 
-Internal tooling — SynaptyX / Scriptiva.
+Portable internal tooling — adopt and adapt freely within any team or organization.

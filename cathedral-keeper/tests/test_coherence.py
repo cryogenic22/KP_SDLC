@@ -166,7 +166,7 @@ def test_coherence_no_flag_finding_count_stable():
 
 # ── Tests: Reverse-Direction Coherence (BUG-002) ─────────────────────
 # QG screams red (many errors, zero-PRS files) but CK stays all-low.
-# This is the Scriptiva scenario the red team flagged.
+# This is the divergence scenario the red team flagged.
 
 
 def test_coherence_fires_when_qg_errors_but_ck_all_low():
@@ -200,7 +200,7 @@ def test_coherence_no_flag_when_ck_has_high_findings():
 
 
 def test_coherence_fires_on_many_zero_prs_files():
-    """Multiple files at PRS 0 with CK all-low → Scriptiva exact scenario."""
+    """Multiple files at PRS 0 with CK all-low → exact divergence scenario."""
     qg_findings = _make_qg_findings([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     ck_findings = _make_ck_findings(100, severity="low")
 
