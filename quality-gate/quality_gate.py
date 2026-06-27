@@ -165,7 +165,7 @@ DEFAULT_CONFIG = {
         "min_score": 85,
         "error_weight": 10,
         "warning_weight": 2,
-        "_note": "PRS = 100 - (errors*10) - (warnings*2) per Lead2Dev QG-02.",
+        "_note": "PRS = 100 - (errors*10) - (warnings*2). Files below min_score are blocked.",
     },
     "thresholds": {"error_count": 0, "warning_count": 10},
 }
