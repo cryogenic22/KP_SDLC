@@ -1,0 +1,21 @@
+name: structural-floor
+
+# KP_SDLC dogfoods its own anti-tamper floor: protected-surface.txt generates
+# .github/CODEOWNERS, and this deterministic gate fails if they drift — so the
+# success-definition surface cannot be quietly relocated. Real teeth come from
+# branch protection (require CODEOWNERS review, disallow self-approval).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  protected-surface-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: CODEOWNERS is in sync with protected-surface.txt
+        run: python harness/structural-floor/gen_codeowners.py --check

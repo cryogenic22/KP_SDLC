@@ -1,0 +1,32 @@
+# Protected surface — the success-definition surface for {{PROJECT_NAME}}.
+#
+# Every path here defines what "success" means: the gates, the thresholds,
+# the configs, and the floor mechanism itself. Editing any of these requires
+# the owner's review via the generated .github/CODEOWNERS.
+#
+# SETUP:
+#   1. Replace {{OWNER}} below with your reviewing owner/team (e.g. @your-org/leads).
+#   2. Uncomment / add the paths that define "success" for this project.
+#   3. Run:  python scripts/gen_codeowners.py   (writes .github/CODEOWNERS)
+#   4. Commit protected-surface.txt AND .github/CODEOWNERS together.
+#
+# A sync test (tests/test_protected_surface_sync.py) and the structural-floor
+# CI gate fail the build if the two ever drift apart — so the success-
+# definition surface cannot be quietly relocated to pass.
+
+# default-owner: {{OWNER}}
+
+# — Quality Gate config (the bar: rules, PRS weights, thresholds)
+# .quality-gate.json
+# quality-gate/quality-gate.config.json
+
+# — Cathedral Keeper config (enabled policies, severities)
+# .cathedral-keeper.json
+
+# — CI gate definitions
+.github/workflows/
+
+# — The structural floor itself (keep these — the mechanism protects itself)
+protected-surface.txt
+.github/CODEOWNERS
+scripts/gen_codeowners.py

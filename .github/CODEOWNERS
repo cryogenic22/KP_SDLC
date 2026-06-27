@@ -1,0 +1,12 @@
+# DO NOT EDIT — generated from protected-surface.txt by gen_codeowners.py.
+# Regenerate after editing protected-surface.txt, then commit both files.
+# A sync test (test_protected_surface_sync) and CI gate fail the build if
+# this file and protected-surface.txt ever drift apart.
+
+quality-gate/quality-gate.config.json @cryogenic22
+quality-gate/quality_gate.py @cryogenic22
+cathedral-keeper/cathedral-keeper.config.json @cryogenic22
+protected-surface.txt @cryogenic22
+.github/CODEOWNERS @cryogenic22
+harness/structural-floor/gen_codeowners.py @cryogenic22
+.github/workflows/ @cryogenic22
