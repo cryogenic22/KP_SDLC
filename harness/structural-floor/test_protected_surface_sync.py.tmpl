@@ -1,0 +1,38 @@
+"""Structural floor: .github/CODEOWNERS must stay in sync with protected-surface.txt.
+
+This is what stops the success-definition surface from being quietly relocated:
+the protected paths generate CODEOWNERS, and this test fails if a hand-edit makes
+them drift. If it fails, run `python scripts/gen_codeowners.py` and commit the
+result.
+
+Runs standalone (`python tests/test_protected_surface_sync.py`) or under pytest.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT / "scripts"))
+
+from gen_codeowners import check_sync
+
+
+def test_codeowners_in_sync_with_protected_surface():
+    surface = _ROOT / "protected-surface.txt"
+    codeowners = _ROOT / ".github" / "CODEOWNERS"
+    assert surface.exists(), f"missing {surface} — see the structural-floor README"
+    surface_text = surface.read_text(encoding="utf-8")
+    existing = codeowners.read_text(encoding="utf-8") if codeowners.exists() else ""
+    in_sync, msg = check_sync(surface_text, existing)
+    assert in_sync, msg
+
+
+if __name__ == "__main__":
+    try:
+        test_codeowners_in_sync_with_protected_surface()
+        print("  PASS  test_codeowners_in_sync_with_protected_surface")
+    except AssertionError as e:
+        print(f"  FAIL  test_codeowners_in_sync_with_protected_surface: {e}")
+        raise SystemExit(1)

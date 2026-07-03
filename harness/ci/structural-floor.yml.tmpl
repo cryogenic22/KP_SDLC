@@ -1,0 +1,21 @@
+name: structural-floor
+
+# The success-definition surface (protected-surface.txt) generates CODEOWNERS.
+# This deterministic gate fails if they drift, so the bar cannot be quietly
+# relocated to pass. Pair it with branch protection: require CODEOWNERS review
+# and disallow self-approval.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  protected-surface-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: CODEOWNERS is in sync with protected-surface.txt
+        run: python scripts/gen_codeowners.py --check

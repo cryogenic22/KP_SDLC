@@ -1,0 +1,27 @@
+# Protected surface — the success-definition surface for KP_SDLC.
+#
+# Every path here defines what "success" means: the gates, the thresholds,
+# the policy configs, and the floor mechanism itself. Editing any of these
+# requires the owner's review via the generated .github/CODEOWNERS.
+#
+# After changing this file, regenerate and commit CODEOWNERS:
+#   python harness/structural-floor/gen_codeowners.py
+# A sync test (and CI) fails the build if the two ever drift apart, so the
+# success-definition surface cannot be quietly relocated.
+
+# default-owner: @cryogenic22
+
+# — Quality Gate: the bar (rule set, PRS weights, thresholds) and its engine
+quality-gate/quality-gate.config.json
+quality-gate/quality_gate.py
+
+# — Cathedral Keeper: architecture policy config (enabled policies, severities)
+cathedral-keeper/cathedral-keeper.config.json
+
+# — The structural floor itself (the mechanism must protect itself)
+protected-surface.txt
+.github/CODEOWNERS
+harness/structural-floor/gen_codeowners.py
+
+# — CI gate definitions (forward-looking: protects workflows once added)
+.github/workflows/
