@@ -113,17 +113,25 @@ def save_baseline(
     root: Path,
     metrics: Dict[str, Any],
     baseline_path: Optional[Path] = None,
+    schemas: Optional[Dict[str, Any]] = None,
 ) -> Path:
-    """Persist the baseline snapshot to disk."""
+    """Persist the baseline snapshot to disk.
+
+    ``schemas`` is an optional per-file Pydantic model snapshot consumed by
+    CK-DATA-SCHEMA-DRIFT. It is only written when provided, so existing
+    baselines and callers remain valid.
+    """
     path = baseline_path or (root / ".quality-reports" / "cathedral-keeper" / "baseline.json")
     path.parent.mkdir(parents=True, exist_ok=True)
 
     commit = _current_commit(root)
-    snapshot = {
+    snapshot: Dict[str, Any] = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "commit": commit or "unknown",
         "metrics": metrics,
     }
+    if schemas is not None:
+        snapshot["schemas"] = schemas
     path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
     return path
 
