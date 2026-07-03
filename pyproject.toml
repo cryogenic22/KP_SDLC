@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "kp-sdlc"
@@ -15,5 +15,22 @@ dependencies = []
 qg = "quality_gate:main"
 ck = "cathedral_keeper.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["quality-gate", "cathedral-keeper", "reporting"]
+# Explicit mapping: component homes keep their product-facing hyphenated names
+# (quality-gate/, cathedral-keeper/) while the importable packages inside them
+# install correctly. packages.find could never capture quality_gate.py as a
+# top-level module, so the qg entry point was unresolvable even with a valid
+# backend. fix-engine/ and reporting/ are direct-run components today; they
+# join the distribution when their code moves fully inside importable
+# packages (see docs/decisions/0001-repo-structure-and-packaging.md).
+[tool.setuptools]
+py-modules = ["quality_gate"]
+packages = [
+    "qg",
+    "cathedral_keeper",
+    "cathedral_keeper.policies",
+    "cathedral_keeper.integrations",
+]
+
+[tool.setuptools.package-dir]
+"" = "quality-gate"
+cathedral_keeper = "cathedral-keeper/cathedral_keeper"

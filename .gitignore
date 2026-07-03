@@ -34,3 +34,6 @@ nul
 # Temp
 *.tmp
 *.bak
+
+# Internal working docs — local-only, never published
+docs/internal/
