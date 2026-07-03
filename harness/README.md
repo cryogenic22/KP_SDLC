@@ -150,4 +150,4 @@ The harness layer is governed by the same philosophy it ships:
 - **Simplicity first.** Bash + plain markdown only. No build step. No package install. Drop into any environment.
 - **Surgical changes.** Bootstrap only adds; never overwrites without explicit user action.
 - **Good enough software.** Don't overload `bootstrap.sh` with options nobody uses.
-- **Test it on at least one real project before committing harness changes.** Atlas is the dogfooder; project #2 will be the second.
+- **Test it on at least one real project before committing harness changes.** The first adopting project is the dogfooder; the next project is the second.

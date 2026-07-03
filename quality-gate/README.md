@@ -288,7 +288,7 @@ The workflow will:
 
 ## Adoption Guide
 
-- `medcontent-ai-platform/docs/quality-gate-adoption-guide.md` (this repo)
+- `docs/quality-gate-adoption-guide.md` (this repo)
 
 ## Example Configs
 

@@ -28,7 +28,7 @@ def build_module_index(*, root: Path, python_roots: List[Tuple[str, Path]]) -> D
 
     `python_roots` is a list of (module_prefix, directory) pairs.
     Example:
-      ("src", <repo>/medcontent-ai-platform/agents/src)
+      ("src", <repo>/myproject/agents/src)
     """
     out: Dict[str, str] = {}
     root_resolved = root.resolve()

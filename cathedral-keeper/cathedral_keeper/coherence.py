@@ -120,7 +120,7 @@ def _check_reverse_divergence(
 ) -> List[Finding]:
     """Flag when QG screams red but CK stays silent (all-low findings).
 
-    This is the Scriptiva scenario: QG route layer at 0 PRS, many errors,
+    This is the classic divergence scenario: QG route layer at 0 PRS, many errors,
     but CK has 1,769 findings all rated 'low'. CK should be flagging
     architectural issues at higher severity when QG shows critical failures.
 
