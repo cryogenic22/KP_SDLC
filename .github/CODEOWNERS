@@ -10,3 +10,5 @@ protected-surface.txt @cryogenic22
 .github/CODEOWNERS @cryogenic22
 harness/structural-floor/gen_codeowners.py @cryogenic22
 .github/workflows/ @cryogenic22
+.claude/settings.json @cryogenic22
+CLAUDE.md @cryogenic22

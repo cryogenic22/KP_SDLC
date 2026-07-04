@@ -25,3 +25,9 @@ harness/structural-floor/gen_codeowners.py
 
 # — CI gate definitions (forward-looking: protects workflows once added)
 .github/workflows/
+
+# — Agent-session machinery: the hooks that run on every session and the
+#   conventions every session follows (incl. the ctxpack memory ledger wiring).
+#   Tampering here could silently disable the receipts layer.
+.claude/settings.json
+CLAUDE.md
