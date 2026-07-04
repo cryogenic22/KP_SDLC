@@ -1,5 +1,5 @@
 §CTX v1.0 L2 DOMAIN:session-ca35891c
-COMPRESSED:2026-07-04 SOURCE_TOKENS:~2756 CTX_TOKENS:~3815 RATIO:~0.9x
+COMPRESSED:2026-07-04 SOURCE_TOKENS:~3349 CTX_TOKENS:~4618 RATIO:~0.9x
 
 ±ENTITY-USER-REQUEST-EE0B2BFA
 REQUEST:hey can you make a html detailing out what this solution does and the coverage it provides for a team and how they can leverage this repo for coding work
@@ -689,11 +689,184 @@ RAN:Force initial checkpoint from this session's transcript
 COMMAND:python -m ctxpack.cli.main checkpoint --transcript "/c/Users/kapil/.claude/projects/C--Users-kapil-Documents-KP-SDLC/ca35891c-054e-4d0a-92a2-5d5c3648c860.jsonl"
 TURN:778
 SRC:session:ca35891c#turn778
+±ENTITY-TOOL-BASH-0227
+RAN:Verify ledger read path: stats, decisions, why-probe
+COMMAND:echo "═══ stats ═══" && python -m ctxpack.cli.main session stats 2>&1 | head -20 && echo "═══ decisions (sample) ═══" && python -m ctxpack.cli.main session deci
+TURN:782
+SRC:session:ca35891c#turn782
+±ENTITY-TOOL-BASH-0228
+RAN:Probe why-resolution on four known identifiers
+COMMAND:for k in "7b9958b" "pull/5" "E0.1" "setuptools.build_meta"; do echo "── why: $k"; python -m ctxpack.cli.main session why "$k" 2>&1 | python -c "import json,sys;
+TURN:786
+SRC:session:ca35891c#turn786
+±ENTITY-TOOL-BASH-0229
+RAN:Branch and make .claude selectively shareable
+COMMAND:git switch -c feat/session-memory main && python - <<'EOF' from pathlib import Path gi = Path(".gitignore") t = gi.read_text(encoding="utf-8") t = t.replace("# 
+TURN:790
+SRC:session:ca35891c#turn790
+±ENTITY-TOOL-BASH-0232
+RAN:Regenerate CODEOWNERS, verify sync, stage everything
+COMMAND:python harness/structural-floor/gen_codeowners.py && python harness/structural-floor/gen_codeowners.py --check && python harness/structural-floor/tests/test_pro
+TURN:796
+SRC:session:ca35891c#turn796
+±ENTITY-TOOL-BASH-0233
+RAN:Commit, push, open PR for session memory
+COMMAND:git commit -m "$(cat <<'EOF' feat(memory): ctxpack session ledger — shared, seeded, floor-protected Wires durable session memory into the repo per the CtxPack o
+TURN:800
+SRC:session:ca35891c#turn800
+±ENTITY-LITERAL-A1DADD3E
+VALUE:#6
+KIND:pr
+TURN:803
+SRC:session:ca35891c#turn803
+±ENTITY-DECISION-FA2D1A9B
+DECISION:Decision: adopt the ctxpack ledger as KP_SDLC's deterministic receipts layer for decisions and identifiers, because curated notes are narrative and cannot guarantee identifier fidelity across compactions.
+TURN:813
+SRC:session:ca35891c#turn813
+±ENTITY-DECISION-FA2716BC
+DECISION:Decision: commit `.claude/ctx/`, `.claude/settings.json`, `.mcp.json`, and `CLAUDE.md` to the repo, because memory must be branch-scoped, cross-machine, and PR-reviewable rather than machine-local.
+TURN:813
+SRC:session:ca35891c#turn813
+±ENTITY-DECISION-FB428E93
+DECISION:Decision: add `.claude/settings.json` and `CLAUDE.md` to the structural-floor protected surface, because tampering with session hooks or conventions could silently disable the receipts layer — CODEOWNERS regenerated in the same change per the coupling rule (9 protected paths, syn
+TURN:813
+SRC:session:ca35891c#turn813
+±ENTITY-LITERAL-84735609
+VALUE:https://github.com/cryogenic22/KP_SDLC/pull/6
+KIND:url
+TURN:813
+SRC:session:ca35891c#turn813
+±ENTITY-LITERAL-6CBDB1A1
+VALUE:ca35891c
+KIND:git_sha
+TURN:813
+SRC:session:ca35891c#turn813
+±ENTITY-LITERAL-69739F11
+VALUE:a94f07d
+KIND:git_sha
+TURN:813
+SRC:session:ca35891c#turn813
+±ENTITY-USER-REQUEST-9B15C581
+REQUEST:/compact
+TURN:815
+SRC:session:ca35891c#turn815
+±ENTITY-USER-REQUEST-E3516A7F
+REQUEST:what are our next set of loops we work on?
+TURN:819
+SRC:session:ca35891c#turn819
+±ENTITY-TOOL-BASH-0238
+RAN:Check branch state and PR #6 status
+COMMAND:git fetch origin --quiet; git status -sb | head -5; gh pr list --state open --limit 10 2>/dev/null; gh pr view 6 --json state,mergedAt -q '.state' 2>/dev/null
+TURN:822
+SRC:session:ca35891c#turn822
+±ENTITY-DECISION-41F9D687
+DECISION:Decision: the immediate next build item is E0.2 self-CI, because every remaining Loop-0 item and all later loops assume a CI gate exists on this repo, and it's the cheapest way to lock in the packaging fix.
+TURN:833
+SRC:session:ca35891c#turn833
+±ENTITY-USER-REQUEST-5BAFE00A
+REQUEST:ok one discipline i want to have on this codebase and also rules in our harness is by default the code produced within this harness is ensuring optimized code to be written and always look around the codebase for duplications and basically doing a lot of code generation for solvi
+TURN:834
+SRC:session:ca35891c#turn834
+±ENTITY-LITERAL-BA57D15D
+VALUE:qg/checks_duplicates.py
+KIND:path
+TURN:855
+SRC:session:ca35891c#turn855
+±ENTITY-DECISION-36F40842
+DECISION:| E13.0a | **Wire the dormant packs** (`checks_duplicates` AST-body-hash, contextual `checks_size`, `checks_complexity`) into the engine dispatch | Already coded and tested; RED test = a renamed-body clone the live engine misses |
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-DECISION-1A289294
+DECISION:Chosen over cyclomatic-only because it penalizes exactly the LLM failure mode — deep nesting from refusing to extract helpers — without punishing flat readable dispatch.
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-DECISION-E8C19BFF
+DECISION:Decision: every generation-time convention ships paired with a deterministic gate, because the METR perception-gap result shows agent self-report of "I reused existing code" cannot be trusted without measurement.
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-DECISION-77E48C3F
+DECISION:Decision: all new economy checks run diff-scoped against new code with legacy behind the E0.4 ratchet, because SonarQube's Clean-as-You-Code model is the only proven way to impose a floor on a brownfield repo without either a big-bang cleanup or vacuous exemptions.
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-2FA330FA
+VALUE:qg/checks_size.py
+KIND:path
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-33029311
+VALUE:qg/checks_complexity.py
+KIND:path
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-4E5278DE
+VALUE:8.3%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-F06FF474
+VALUE:15.7%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-5E1164E3
+VALUE:25%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-947B74FF
+VALUE:3.8%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-B31374E6
+VALUE:63%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-EA7BA466
+VALUE:20%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-42EB8ECD
+VALUE:19%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-LITERAL-1F61F2D8
+VALUE:3%
+KIND:number_unit
+TURN:858
+SRC:session:ca35891c#turn858
+±ENTITY-USER-REQUEST-8B8816D6
+REQUEST:by the way are you using ctx mcp you are now using for memory? the new version for that is .5 version?
+TURN:859
+SRC:session:ca35891c#turn859
+±ENTITY-TOOL-BASH-0246
+RAN:Check installed ctxpack version
+COMMAND:python -c "import ctxpack; print(getattr(ctxpack,'__version__','no __version__ attr'))"; pip show ctxpack 2>/dev/null | head -4
+TURN:862
+SRC:session:ca35891c#turn862
+±ENTITY-LITERAL-9BE2AFA3
+VALUE:0.5.0
+KIND:version
+TURN:869
+SRC:session:ca35891c#turn869
+±ENTITY-LITERAL-80AF029B
+VALUE:v0.5.0
+KIND:version
+TURN:869
+SRC:session:ca35891c#turn869
 ±ENTITY-FILE-E-PROJECTS-C--USERS-KAPIL-DOCUMENTS-KP-SDLC-MEMORY-MEMORY-MD
 PATH:C:\Users\kapil\.claude\projects\C--Users-kapil-Documents-KP-SDLC\memory\MEMORY.md
+EDITS:3
+LAST-TURN:810
+SRC:session:ca35891c#turn810
+±ENTITY-FILE-PIL-DOCUMENTS-KP-SDLC-MEMORY-CTXPACK-SESSION-LEDGER-WIRED-MD
+PATH:C:\Users\kapil\.claude\projects\C--Users-kapil-Documents-KP-SDLC\memory\ctxpack-session-ledger-wired.md
 EDITS:1
-LAST-TURN:152
-SRC:session:ca35891c#turn152
+LAST-TURN:804
+SRC:session:ca35891c#turn804
 ±ENTITY-FILE--KAPIL-DOCUMENTS-KP-SDLC-MEMORY-KP-SDLC-STRATEGIC-CONTEXT-MD
 PATH:C:\Users\kapil\.claude\projects\C--Users-kapil-Documents-KP-SDLC\memory\kp-sdlc-strategic-context.md
 EDITS:1
@@ -846,9 +1019,9 @@ LAST-TURN:485
 SRC:session:ca35891c#turn485
 ±ENTITY-FILE-C-USERS-KAPIL-DOCUMENTS-KP-SDLC-PROTECTED-SURFACE-TXT
 PATH:C:\Users\kapil\Documents\KP_SDLC\protected-surface.txt
-EDITS:1
-LAST-TURN:479
-SRC:session:ca35891c#turn479
+EDITS:2
+LAST-TURN:794
+SRC:session:ca35891c#turn794
 ±ENTITY-FILE-C-USERS-KAPIL-DOCUMENTS-KP-SDLC-PYPROJECT-TOML
 PATH:C:\Users\kapil\Documents\KP_SDLC\pyproject.toml
 EDITS:2
