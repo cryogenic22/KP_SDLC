@@ -28,8 +28,10 @@ nul
 # SQLite graph cache
 .cathedral-keeper/graph.db
 
-# Claude Code
-.claude/
+# Claude Code — project settings + ctx ledger are shared (committed); rest stays local
+.claude/*
+!.claude/settings.json
+!.claude/ctx/
 
 # Temp
 *.tmp

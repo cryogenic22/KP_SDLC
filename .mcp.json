@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ctxpack": {
+      "command": "python",
+      "args": [
+        "-m",
+        "ctxpack.integrations.mcp_server"
+      ]
+    }
+  }
+}
