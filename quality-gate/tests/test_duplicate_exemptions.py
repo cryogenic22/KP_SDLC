@@ -1,10 +1,11 @@
-"""S1 — Tests for cross-stack duplicate exemption.
+"""S1 — Tests for duplicate-check exemptions.
 
-Team Feedback: QG flags backend+frontend type mirrors as duplicates
-(e.g., ApprovalOut in schemas.py and approval.ts). These are intentional.
-Also: Alembic upgrade/downgrade and enum values/label are always flagged.
-
-TDD: Tests first, then implementation.
+Team Feedback: backend+frontend type mirrors (e.g. ApprovalOut in
+schemas.py and approval.ts) must never be flagged — guaranteed by
+construction since E13.0a: Python signatures hash the AST, web signatures
+hash normalized text, so a py/web pair can never share a signature
+(pinned by test_python_ts_mirror_never_grouped below).
+Also: Alembic upgrade/downgrade and enum values/label are always skipped.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from qg.checks_duplicates import (
     check_duplicate_helpers,
     _collect_function_sigs,
-    _should_skip_cross_stack,
     _ALEMBIC_SKIP_NAMES,
     _ENUM_SKIP_NAMES,
 )
@@ -66,45 +66,47 @@ def _run_duplicate_check(file_map: dict[str, str], config: dict = None) -> list[
     return issues
 
 
-# ── Cross-Stack Exemption Tests ──────────────────────────────────────
+# ── Cross-Stack Structural Guarantee ─────────────────────────────────
 
 
-def test_cross_stack_exemption_helper():
-    """_should_skip_cross_stack returns True for py+ts pair."""
-    locations = [
-        (Path("app/schemas.py"), 10, "ApprovalOut"),
-        (Path("web/approval.ts"), 5, "ApprovalOut"),
-    ]
-    assert _should_skip_cross_stack(locations) is True
+def test_python_ts_mirror_never_grouped():
+    """A py function and a ts function can never share a signature group.
 
-
-def test_cross_stack_same_language_not_exempt():
-    """Same-language duplicates should NOT be exempt."""
-    locations = [
-        (Path("app/schemas.py"), 10, "ApprovalOut"),
-        (Path("app/models.py"), 5, "ApprovalOut"),
-    ]
-    assert _should_skip_cross_stack(locations) is False
-
-
-def test_cross_stack_three_files_mixed():
-    """If duplicate spans >2 files and not all cross-stack, still flag."""
-    locations = [
-        (Path("app/schemas.py"), 10, "process"),
-        (Path("app/utils.py"), 5, "process"),
-        (Path("web/utils.ts"), 20, "process"),
-    ]
-    # Two Python files have the same function — not purely cross-stack
-    assert _should_skip_cross_stack(locations) is False
-
-
-def test_cross_stack_ts_tsx_pair():
-    """TypeScript .tsx and Python .py should be exempt."""
-    locations = [
-        (Path("backend/models.py"), 1, "UserSchema"),
-        (Path("frontend/components/user.tsx"), 1, "UserSchema"),
-    ]
-    assert _should_skip_cross_stack(locations) is True
+    The old cross_stack_exempt flag is gone: Python hashes the AST
+    (prefix "python:"), web hashes normalized text (prefix "web:"), so
+    type mirrors are unreportable by construction.
+    """
+    sigs: dict[str, list] = defaultdict(list)
+    py_src = (
+        "def approval_out(payload):\n"
+        "    checked = dict(payload)\n"
+        "    checked[\"approved\"] = True\n"
+        "    checked[\"source\"] = \"api\"\n"
+        "    return checked\n"
+    )
+    ts_src = (
+        "export function approvalOut(payload) {\n"
+        "  const checked = {...payload};\n"
+        "  checked.approved = true;\n"
+        "  checked.source = \"api\";\n"
+        "  return checked;\n"
+        "}\n"
+    )
+    _collect_function_sigs(
+        file_path=Path("app/schemas.py"), content=py_src,
+        lines=py_src.splitlines(), language="python",
+        func_signatures=sigs, min_lines=4,
+    )
+    _collect_function_sigs(
+        file_path=Path("web/approval.ts"), content=ts_src,
+        lines=ts_src.splitlines(), language="typescript",
+        func_signatures=sigs, min_lines=4,
+    )
+    prefixes = {sig.split(":", 1)[0] for sig in sigs}
+    assert prefixes == {"python", "web"}
+    assert all(len(locs) == 1 for locs in sigs.values()), (
+        "py and web functions must never share a signature group"
+    )
 
 
 # ── Alembic Skip List Tests ──────────────────────────────────────────

@@ -101,6 +101,17 @@ except ImportError:  # pragma: no cover
     check_data_contracts = None  # type: ignore[assignment]
     check_ai_code_quality = None  # type: ignore[assignment]
 
+try:  # Code-economy packs (contextual size, complexity, body-hash duplicates)
+    from qg.checks_size import check_file_size as pack_check_file_size
+    from qg.checks_size import check_function_size as pack_check_function_size
+    from qg.checks_complexity import check_max_complexity as pack_check_max_complexity
+    from qg.checks_duplicates import check_duplicate_helpers as pack_check_duplicate_helpers
+except ImportError:  # pragma: no cover
+    pack_check_file_size = None  # type: ignore[assignment]
+    pack_check_function_size = None  # type: ignore[assignment]
+    pack_check_max_complexity = None  # type: ignore[assignment]
+    pack_check_duplicate_helpers = None  # type: ignore[assignment]
+
 try:  # PRS veto engine
     from qg.prs_engine import should_veto, compute_bprs, DEFAULT_VETO_RULES
     HAS_PRS_VETO = True
@@ -396,169 +407,49 @@ class QualityGate:
     # ========================================================================
     # RULE IMPLEMENTATIONS
     # ========================================================================
+    # file_size / function_size / max_complexity / no_duplicate_code live in
+    # qg.checks_size / qg.checks_complexity / qg.checks_duplicates — one
+    # implementation, reachable from the engine (E13.0a removed the dormant
+    # parallel copies that previously lived here).
+
+    def _pack_add_issue(self, file_path: Path):
+        """add_issue bridge for qg packs: fills the file and normalizes the
+        pack's Severity enum (qg.types) to the engine's, so PRS counting and
+        veto checks compare a single severity type."""
+        def _add(*, severity: Any = None, **kwargs: Any) -> None:
+            sev = _parse_severity(getattr(severity, "value", severity), default=Severity.WARNING)
+            kwargs.setdefault("file", str(file_path))
+            self._add_issue(severity=sev, **kwargs)
+        return _add
 
     def check_file_size(self, file_path: Path, lines: list[str]) -> None:
-        """Check if file exceeds maximum line count."""
-        rule_config = self.config.get("rules", {}).get("file_size", {})
-        if not rule_config.get("enabled", True):
+        """File-size rule (qg.checks_size: path-glob exceptions match subdirs)."""
+        if pack_check_file_size is None:  # pragma: no cover — qg/ ships with the engine
             return
-
-        max_lines = rule_config.get("max_lines", 500)
-        warning_lines = rule_config.get("warning_lines", 300)
-        exceptions = rule_config.get("exceptions", [])
-
-        # Check exceptions
-        for pattern in exceptions:
-            if fnmatch.fnmatch(file_path.name, pattern):
-                return
-
-        line_count = len(lines)
-
-        if line_count > max_lines:
-            self._add_issue(
-                file=str(file_path),
-                line=1,
-                rule="file_size",
-                severity=Severity.ERROR,
-                message=f"File has {line_count} lines (max: {max_lines}). Split into smaller modules.",
-                suggestion="Extract logical sections into separate files/modules."
-            )
-        elif line_count > warning_lines:
-            self._add_issue(
-                file=str(file_path),
-                line=1,
-                rule="file_size",
-                severity=Severity.WARNING,
-                message=f"File has {line_count} lines (warning threshold: {warning_lines}).",
-                suggestion="Consider refactoring before it grows further."
-            )
+        rel_file = str(file_path)
+        with contextlib.suppress(ValueError):  # e.g. path on another drive
+            rel_file = os.path.relpath(str(file_path), str(self.root_dir))
+        pack_check_file_size(
+            rel_file=rel_file,
+            file_path=file_path,
+            lines=lines,
+            config=self.config,
+            add_issue=self._pack_add_issue(file_path),
+        )
 
     def check_function_size(self, file_path: Path, lines: list[str]) -> None:
-        """Check if any function exceeds maximum line count."""
-        rule_config = self.config.get("rules", {}).get("function_size", {})
-        if not rule_config.get("enabled", True):
+        """Function-size rule (qg.checks_size: context-aware limits)."""
+        if pack_check_function_size is None:  # pragma: no cover — qg/ ships with the engine
             return
-
-        language = self._get_language(file_path)
-        max_lines_default = int(rule_config.get("max_lines", 50) or 50)
-        max_lines_by_language = rule_config.get("max_lines_by_language", {})
-        if isinstance(max_lines_by_language, dict):
-            max_lines = int(max_lines_by_language.get(language, max_lines_default) or max_lines_default)
-        else:
-            max_lines = max_lines_default
-
-        python_pattern = r"^(\s*)(def|async def)\s+(\w+)"
-        ts_function_pattern = r"^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)"
-        ts_arrow_pattern = r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>"
-        js_function_pattern = r"^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)"
-        js_arrow_pattern = r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>"
-
-        severity = _parse_severity(rule_config.get("severity"), default=Severity.ERROR)
-
-        if language == "python":
-            content = "\n".join(lines)
-            try:
-                tree = ast.parse(content, filename=str(file_path))
-            except SyntaxError:
-                tree = None
-
-            if tree is not None:
-                for node in ast.walk(tree):
-                    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        continue
-                    start = int(getattr(node, "lineno", 1) or 1)
-                    end = int(getattr(node, "end_lineno", start) or start)
-                    length = (end - start) + 1
-                    if length > max_lines:
-                        self._add_issue(
-                            file=str(file_path),
-                            line=start,
-                            rule="function_size",
-                            severity=severity,
-                            message=f"Function '{node.name}' is {length} lines (max: {max_lines}).",
-                            suggestion="Extract parts into smaller helper functions.",
-                        )
-                return
-
-            stack: list[tuple[int, str, int]] = []
-
-            def _indent_len(value: str) -> int:
-                return len(re.match(r"^(\s*)", value).group(1))  # type: ignore[union-attr]
-
-            def _close_until(indent: int, end_line: int) -> None:
-                while stack and indent <= stack[-1][2]:
-                    start, name, _ = stack.pop()
-                    length = (end_line - start) + 1
-                    if length > max_lines:
-                        self._add_issue(
-                            file=str(file_path),
-                            line=start,
-                            rule="function_size",
-                            severity=severity,
-                            message=f"Function '{name}' is {length} lines (max: {max_lines}).",
-                            suggestion="Extract parts into smaller helper functions.",
-                        )
-
-            for i, line in enumerate(lines, 1):
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-
-                indent = _indent_len(line)
-                if stack and indent <= stack[-1][2] and not line.lstrip().startswith("@"):
-                    _close_until(indent, i - 1)
-
-                match = re.match(python_pattern, line)
-                if match:
-                    name = match.group(3) if match.lastindex and match.lastindex >= 3 else "anonymous"
-                    stack.append((i, name, len(match.group(1))))
-
-            _close_until(0, len(lines))
-            return
-
-        if language not in {"typescript", "javascript"}:
-            return
-
-        function_pattern = ts_function_pattern if language == "typescript" else js_function_pattern
-        arrow_pattern = ts_arrow_pattern if language == "typescript" else js_arrow_pattern
-
-        func_start: int | None = None
-        func_name: str | None = None
-        brace_depth = 0
-        saw_open_brace = False
-
-        for i, line in enumerate(lines, 1):
-            if func_start is None:
-                match = re.match(function_pattern, line) or re.match(arrow_pattern, line)
-                if match:
-                    func_start = i
-                    func_name = match.group(1) if match.lastindex and match.lastindex >= 1 else "anonymous"
-                    brace_depth = 0
-                    saw_open_brace = False
-
-            if func_start is None:
-                continue
-
-            brace_depth += line.count("{")
-            brace_depth -= line.count("}")
-            if "{" in line:
-                saw_open_brace = True
-
-            if saw_open_brace and brace_depth <= 0:
-                length = (i - func_start) + 1
-                if length > max_lines:
-                    self._add_issue(
-                        file=str(file_path),
-                        line=func_start,
-                        rule="function_size",
-                        severity=severity,
-                        message=f"Function '{func_name}' is {length} lines (max: {max_lines}).",
-                        suggestion="Extract parts into smaller helper functions.",
-                    )
-                func_start = None
-                func_name = None
-                brace_depth = 0
-                saw_open_brace = False
+        pack_check_function_size(
+            file_path=file_path,
+            content="\n".join(lines),
+            lines=lines,
+            language=self._get_language(file_path),
+            config=self.config,
+            add_issue=self._pack_add_issue(file_path),
+            is_test=self._is_test_path(file_path),
+        )
 
     def check_no_todo_fixme(self, file_path: Path, lines: list[str]) -> None:
         """Check for TODO/FIXME comments without issue links."""
@@ -918,201 +809,31 @@ class QualityGate:
             )
 
     def check_max_complexity(self, file_path: Path, lines: list[str]) -> None:
-        """Check cyclomatic complexity (simplified check based on branching)."""
-        rule_config = self.config.get("rules", {}).get("max_complexity", {})
-        if not rule_config.get("enabled", True):
+        """Complexity rule (qg.checks_complexity: strings/comments stripped for web)."""
+        if pack_check_max_complexity is None:  # pragma: no cover — qg/ ships with the engine
             return
-
-        max_complexity = rule_config.get("cyclomatic_max", 10)
-        language = self._get_language(file_path)
-
-        if language == "python":
-            content = "\n".join(lines)
-            try:
-                tree = ast.parse(content, filename=str(file_path))
-            except SyntaxError:
-                return
-
-            severity = _parse_severity(rule_config.get("severity"), default=Severity.WARNING)
-
-            def _complexity(node: ast.AST) -> int:
-                score = 1
-                for child in ast.walk(node):
-                    if isinstance(
-                        child,
-                        (
-                            ast.If,
-                            ast.For,
-                            ast.AsyncFor,
-                            ast.While,
-                            ast.With,
-                            ast.AsyncWith,
-                            ast.Try,
-                            ast.ExceptHandler,
-                            ast.IfExp,
-                        ),
-                    ):
-                        score += 1
-                    elif isinstance(child, ast.BoolOp):
-                        score += max(0, len(child.values) - 1)
-                    elif isinstance(child, ast.Match):
-                        score += len(child.cases)
-                return score
-
-            for node in ast.walk(tree):
-                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                c = _complexity(node)
-                if c > max_complexity:
-                    start = int(getattr(node, "lineno", 1) or 1)
-                    self._add_issue(
-                        file=str(file_path),
-                        line=start,
-                        rule="max_complexity",
-                        severity=severity,
-                        message=f"Function '{node.name}' has complexity {c} (max: {max_complexity}).",
-                        suggestion="Simplify by extracting conditions or using early returns.",
-                    )
-            return
-
-        # Count branching keywords
-        branch_keywords = {
-            'python': ['if ', 'elif ', 'for ', 'while ', 'except ', 'and ', 'or ', 'case '],
-            'typescript': ['if ', 'else if ', 'for ', 'while ', 'catch ', '&& ', '|| ', 'case ', '? '],
-            'javascript': ['if ', 'else if ', 'for ', 'while ', 'catch ', '&& ', '|| ', 'case ', '? '],
-        }
-
-        keywords = branch_keywords.get(language, [])
-        if not keywords:
-            return
-
-        severity = _parse_severity(rule_config.get("severity"), default=Severity.WARNING)
-
-        # Simple per-function complexity tracking
-        current_func = None
-        func_start = 0
-        complexity = 1
-
-        def _match_function_name(line: str) -> str | None:
-            if language in {"typescript", "javascript"}:
-                match = re.match(
-                    r"^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\b", line
-                )
-                if match:
-                    return match.group(1)
-
-                match = re.match(
-                    r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(.+)$", line
-                )
-                if not match:
-                    return None
-                rhs = match.group(2).strip()
-                if "=>" in rhs:
-                    return match.group(1)
-                if re.match(r"^(?:async\s+)?function\b", rhs):
-                    return match.group(1)
-                return None
-
-            return None
-
-        for i, line in enumerate(lines, 1):
-            func_name = _match_function_name(line)
-            if func_name:
-                # Check previous function
-                if current_func and complexity > max_complexity:
-                    self._add_issue(
-                        file=str(file_path),
-                        line=func_start,
-                        rule="max_complexity",
-                        severity=severity,
-                        message=f"Function '{current_func}' has complexity {complexity} (max: {max_complexity}).",
-                        suggestion="Simplify by extracting conditions or using early returns."
-                    )
-
-                current_func = func_name
-                func_start = i
-                complexity = 1
-            else:
-                for kw in keywords:
-                    complexity += line.count(kw)
-
-        if current_func and complexity > max_complexity:
-            self._add_issue(
-                file=str(file_path),
-                line=func_start,
-                rule="max_complexity",
-                severity=severity,
-                message=f"Function '{current_func}' has complexity {complexity} (max: {max_complexity}).",
-                suggestion="Simplify by extracting conditions or using early returns.",
-            )
+        pack_check_max_complexity(
+            file_path=file_path,
+            content="\n".join(lines),
+            language=self._get_language(file_path),
+            config=self.config,
+            add_issue=self._pack_add_issue(file_path),
+        )
 
     def check_duplicate_helpers(self, all_files: dict[Path, list[str]]) -> None:
-        """Detect duplicate utility functions across files."""
-        rule_config = self.config.get("rules", {}).get("no_duplicate_code", {})
-        if not rule_config.get("enabled", True):
+        """Duplicate-code rule (qg.checks_duplicates: name-independent body hash)."""
+        if pack_check_duplicate_helpers is None:  # pragma: no cover — qg/ ships with the engine
             return
-
-        # Track function definitions
-        func_signatures: dict[str, list[tuple[Path, int]]] = defaultdict(list)
-        severity = _parse_severity(rule_config.get("severity"), default=Severity.WARNING)
-
-        for file_path, lines in all_files.items():
-            if self._is_test_path(file_path):
-                continue
-            language = self._get_language(file_path)
-            if language not in ('python', 'typescript', 'javascript'):
-                continue
-
-            # Extract top-level function names (avoid noisy method/inner defs).
-            if language == "python":
-                pattern = r'^(?P<indent>\s*)(?:async\s+def|def)\s+(?P<name>\w+)\s*\('
-            else:
-                pattern = (
-                    r'^(?P<indent>\s*)(?:export\s+)?(?:async\s+)?function\s+(?P<name>\w+)\s*\('
-                    r'|^(?P<indent2>\s*)(?:export\s+)?(?:const|let|var)\s+(?P<name2>\w+)\s*=\s*(?:async\s+)?\('
-                )
-
-            skip_names = {
-                "constructor",
-                "render",
-                "main",
-                "init",
-                "setup",
-                "__init__",
-                "__repr__",
-                "__str__",
-            }
-            for i, line in enumerate(lines, 1):
-                match = re.match(pattern, line)
-                if match:
-                    indent = match.group("indent") if "indent" in match.groupdict() else match.group("indent2") or ""
-                    if indent and len(indent) > 0:
-                        continue
-                    func_name = match.group("name") if "name" in match.groupdict() and match.group("name") else match.group("name2")
-                    if not func_name or func_name in skip_names:
-                        continue
-                    if func_name.startswith("_"):
-                        continue
-                    func_signatures[str(func_name)].append((file_path, i))
-
-        # Report duplicates
-        for func_name, locations in func_signatures.items():
-            if len(locations) > 1:
-                # Only report if in different files
-                files = set(str(loc[0]) for loc in locations)
-                if len(files) > 1:
-                    first_loc = locations[0]
-                    self._add_issue(
-                        file=str(first_loc[0]),
-                        line=first_loc[1],
-                        rule="no_duplicate_code",
-                        severity=severity,
-                        message=f"Function '{func_name}' defined in {len(locations)} places.",
-                        suggestion=(
-                            "Extract to shared utility. Also in: "
-                            + ", ".join(str(loc[0].name) for loc in locations[1:3])
-                        ),
-                    )
+        enriched = {
+            path: ("\n".join(lines), lines, self._get_language(path), self._is_test_path(path))
+            for path, lines in all_files.items()
+        }
+        pack_check_duplicate_helpers(
+            all_files=enriched,
+            config=self.config,
+            is_test_path=self._is_test_path,
+            add_issue_for_path=self._pack_add_issue,
+        )
 
     # ========================================================================
     # MAIN EXECUTION
@@ -1354,6 +1075,14 @@ class QualityGate:
 
     def run(self, paths: list[str] | None = None, staged_only: bool = False) -> CheckResult:
         """Run quality gate checks."""
+        if pack_check_file_size is None and not self._quiet:  # pragma: no cover
+            # These four are core gate rules, not optional tech packs — a
+            # silent no-op here would be vacuous green.
+            print(
+                "[QualityGate] WARNING: qg/ code-economy packs failed to import — "
+                "file_size, function_size, max_complexity and no_duplicate_code "
+                "are NOT running. Ship qg/ alongside quality_gate.py."
+            )
         self.issues = []  # reset accumulator: re-runs on one instance must not pile up
         files = self.get_files_to_check(paths, staged_only)
 

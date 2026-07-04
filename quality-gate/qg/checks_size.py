@@ -159,12 +159,19 @@ def check_function_size(
     language: str,
     config: dict[str, Any],
     add_issue: AddIssue,
+    is_test: bool = False,
 ) -> None:
     name = "function_size"
     if not _enabled(config, name, default=True):
         return
 
-    max_lines = _function_size_limit(config=config, language=language, extension=file_path.suffix.lower())
+    extension = file_path.suffix.lower()
+    context = _detect_function_context(
+        language=language, extension=extension, is_test=is_test, file_path=str(file_path)
+    )
+    max_lines = _function_size_limit(
+        config=config, language=language, extension=extension, context=context
+    )
     severity = parse_severity(_rule(config, name).get("severity"), default=Severity.ERROR)
 
     spans = _function_spans(file_path=file_path, content=content, lines=lines, language=language)
