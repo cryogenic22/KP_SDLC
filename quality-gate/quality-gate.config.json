@@ -84,7 +84,7 @@
       ],
       "exceptions": ["password=''", "password=\"\"", "test", "example", "placeholder"]
     },
-    "no_duplicate_code": {"enabled": true, "severity": "warning"},
+    "no_duplicate_code": {"enabled": true, "severity": "warning", "min_lines": 4},
     "max_complexity": {"enabled": true, "severity": "warning", "cyclomatic_max": 10},
 
     "mutable_default": {"enabled": false, "severity": "error"},

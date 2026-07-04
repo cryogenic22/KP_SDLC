@@ -15,6 +15,10 @@ def _pattern_variants(pattern: str) -> list[str]:
         pat = pat[2:]
     if pat.startswith("**/"):
         return [pat, pat[3:]]
+    if "/" not in pat:
+        # Bare basename patterns (e.g. "legacy.*") match at any depth —
+        # compatible with configs written for basename-only matching.
+        return [pat, "**/" + pat]
     return [pat]
 
 

@@ -19,37 +19,11 @@ _ALEMBIC_SKIP_NAMES = {"upgrade", "downgrade"}
 # Enum helper methods that repeat across enum classes
 _ENUM_SKIP_NAMES = {"values", "label", "labels", "choices", "from_value", "from_label"}
 
-# Languages grouped by stack for cross-stack exemption
-_PYTHON_LANGS = {"python"}
-_WEB_LANGS = {"typescript", "javascript"}
-
-
-def _should_skip_cross_stack(locations: list[tuple[Path, int, str]]) -> bool:
-    """Return True if all duplicates are cross-stack type mirrors.
-
-    Cross-stack = every file is either Python or Web (TS/JS), and both
-    stacks are represented. This catches intentional type mirrors like
-    ApprovalOut in schemas.py + approval.ts.
-
-    If any two files share the same stack, it's a real duplicate.
-    """
-    if len(locations) < 2:
-        return False
-
-    py_files = []
-    web_files = []
-    for path, _, _ in locations:
-        ext = path.suffix.lower()
-        if ext == ".py":
-            py_files.append(path)
-        elif ext in (".ts", ".tsx", ".js", ".jsx"):
-            web_files.append(path)
-
-    # Cross-stack: exactly one from each stack, no same-stack duplicates
-    if len(py_files) > 1 or len(web_files) > 1:
-        return False  # Same-stack duplicates exist — flag it
-
-    return len(py_files) >= 1 and len(web_files) >= 1
+# Python/web type mirrors (e.g. ApprovalOut in schemas.py + approval.ts) can
+# never be flagged by construction: Python signatures hash the AST, web
+# signatures hash normalized text, so a signature group is always
+# single-stack. TS and JS share one "web:" namespace deliberately — an
+# identical body in a .ts and a .js file is a real duplicate.
 
 
 def _rule(config: dict[str, Any], name: str) -> dict[str, Any]:
@@ -71,7 +45,11 @@ def check_duplicate_helpers(
     if not _enabled(config, name, default=True):
         return
 
-    severity = parse_severity(_rule(config, name).get("severity"), default=Severity.WARNING)
+    rule = _rule(config, name)
+    severity = parse_severity(rule.get("severity"), default=Severity.WARNING)
+    # Functions spanning fewer lines than this are never reported: trivial
+    # stubs (health checks, protocol methods) duplicate by nature.
+    min_lines = int(rule.get("min_lines", 4) or 4)
     func_signatures: dict[str, list[tuple[Path, int, str]]] = defaultdict(list)
 
     for file_path, (content, lines, language, is_test) in all_files.items():
@@ -85,17 +63,13 @@ def check_duplicate_helpers(
             lines=lines,
             language=language,
             func_signatures=func_signatures,
+            min_lines=min_lines,
         )
-
-    cross_stack_exempt = bool(_rule(config, name).get("cross_stack_exempt", True))
 
     for signature, locations in func_signatures.items():
         if len(locations) <= 1:
             continue
         if len({loc[0] for loc in locations}) <= 1:
-            continue
-        # Cross-stack exemption: py+ts type mirrors are intentional
-        if cross_stack_exempt and _should_skip_cross_stack(locations):
             continue
         first_file, first_line, first_name = locations[0]
         also_in = ", ".join(loc[0].name for loc in locations[1:4])
@@ -115,6 +89,7 @@ def _collect_function_sigs(
     lines: list[str],
     language: str,
     func_signatures: dict[str, list[tuple[Path, int, str]]],
+    min_lines: int = 4,
 ) -> None:
     skip_names = {
         "constructor",
@@ -134,10 +109,12 @@ def _collect_function_sigs(
     } | _ALEMBIC_SKIP_NAMES | _ENUM_SKIP_NAMES
     if language == "python":
         _collect_python_sigs(
-            file_path=file_path, content=content, lines=lines, out=func_signatures, skip_names=skip_names
+            file_path=file_path, content=content, out=func_signatures, skip_names=skip_names, min_lines=min_lines
         )
         return
-    _collect_web_sigs(file_path=file_path, lines=lines, language=language, out=func_signatures, skip_names=skip_names)
+    _collect_web_sigs(
+        file_path=file_path, lines=lines, language=language, out=func_signatures, skip_names=skip_names, min_lines=min_lines
+    )
 
 
 def _hash_text(text: str) -> str:
@@ -148,9 +125,9 @@ def _collect_python_sigs(
     *,
     file_path: Path,
     content: str,
-    lines: list[str],
     out: dict[str, list[tuple[Path, int, str]]],
     skip_names: set[str],
+    min_lines: int,
 ) -> None:
     try:
         tree = ast.parse(content, filename=str(file_path))
@@ -164,9 +141,14 @@ def _collect_python_sigs(
             continue
         start = int(getattr(node, "lineno", 1) or 1)
         end = int(getattr(node, "end_lineno", start) or start)
-        body_dump = ast.dump(node, include_attributes=False)
-        compact = re.sub(r"\\s+", "", "\\n".join(lines[start - 1 : end]))
-        sig = f"python:{_hash_text(body_dump + '|' + compact)}"
+        if (end - start) + 1 < min_lines:
+            continue
+        # Name-independent signature: hash the arguments + body, never the
+        # function name or decorators — a clone that was only renamed must
+        # still match (the agentic regeneration failure mode).
+        arg_dump = ast.dump(node.args, include_attributes=False)
+        body_dump = "|".join(ast.dump(stmt, include_attributes=False) for stmt in node.body)
+        sig = f"python:{_hash_text(arg_dump + '||' + body_dump)}"
         out[sig].append((file_path, start, func_name))
 
 
@@ -177,10 +159,11 @@ def _collect_web_sigs(
     language: str,
     out: dict[str, list[tuple[Path, int, str]]],
     skip_names: set[str],
+    min_lines: int,
 ) -> None:
-    func_pat = re.compile(r"^(?P<indent>\\s*)(?:export\\s+)?(?:async\\s+)?function\\s+(?P<name>\\w+)\\b")
+    func_pat = re.compile(r"^(?P<indent>\s*)(?:export\s+)?(?:async\s+)?function\s+(?P<name>\w+)\b")
     arrow_pat = re.compile(
-        r"^(?P<indent>\\s*)(?:export\\s+)?(?:const|let|var)\\s+(?P<name>\\w+)\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|\\w+)\\s*=>"
+        r"^(?P<indent>\s*)(?:export\s+)?(?:const|let|var)\s+(?P<name>\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>"
     )
     i = 0
     while i < len(lines):
@@ -197,14 +180,23 @@ def _collect_web_sigs(
             continue
 
         collected, advanced = _collect_web_block(lines, i)
-        normalized = [raw.strip() for raw in collected if not raw.strip().startswith("//")]
-        compact = re.sub(r"\\s+", "", "\\n".join(normalized))
-        sig = f"{language}:{_hash_text(compact)}"
-        out[sig].append((file_path, i + 1, func_name))
+        if len(collected) >= min_lines:
+            # Name-independent: blank the declared name out of the first
+            # line so a renamed clone still hashes identically.
+            first = collected[0][: match.start("name")] + "FN" + collected[0][match.end("name") :]
+            rest = [raw.strip() for raw in collected[1:] if not raw.strip().startswith("//")]
+            compact = re.sub(r"\s+", "", "\n".join([first.strip(), *rest]))
+            sig = f"web:{_hash_text(compact)}"
+            out[sig].append((file_path, i + 1, func_name))
         i = advanced
 
 
 def _collect_web_block(lines: list[str], start_idx: int) -> tuple[list[str], int]:
+    # Brace-less declaration (`export const double = (x) => x * 2;`): a
+    # single-line block. Consuming further lines here desynchronizes the
+    # scan and silently disables detection for the rest of the file.
+    if "{" not in lines[start_idx]:
+        return [lines[start_idx]], start_idx + 1
     brace_depth = 0
     saw_open = False
     collected: list[str] = []
