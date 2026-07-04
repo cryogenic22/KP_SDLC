@@ -63,10 +63,31 @@ def _make_context(args, *, dry_run: bool, subs_name: str, subs_owner: str) -> In
     )
 
 
+def _preflight_conflicts(target: Path) -> list[str]:
+    """Gating files init would generate/own that already exist as user content.
+    A repo init already created (carries our manifest) is exempt — re-running
+    is idempotent by design."""
+    if (target / ".harness" / "manifest.json").exists():
+        return []
+    conflicts = [f for f in hm.GATING_FILES if (target / f).exists()]
+    wf_dir = target / hm.WORKFLOWS_DEST
+    if wf_dir.is_dir():
+        conflicts += [f"{hm.WORKFLOWS_DEST}/{p.name}" for p in sorted(wf_dir.glob("*.yml"))]
+    return conflicts
+
+
 def cmd_init(args) -> int:
     name = _prompt("name", args.name)
     owner = _prompt("owner", args.owner)
     ctx = _make_context(args, dry_run=args.dry_run, subs_name=name, subs_owner=owner)
+    conflicts = _preflight_conflicts(ctx.target)
+    if conflicts:
+        print(f"[sdlc init] refusing: target already has gating files: "
+              f"{', '.join(conflicts)}", file=sys.stderr)
+        print("[sdlc init] init creates a repo from birth. Init into an empty "
+              "directory, or use `sdlc bootstrap` to layer the harness into an "
+              "existing repo (it never overwrites).", file=sys.stderr)
+        return 2
     print(f"[sdlc init] {name}  owner={owner}  target={ctx.target}"
           + ("  (dry-run)" if args.dry_run else ""))
     run(ctx, [ph.copy_harness, ph.park_readme, ph.setup_floor, ph.write_manifest])

@@ -33,6 +33,23 @@ def test_config_workflows_are_real_ci_templates():
     assert not unknown, f"CONFIG_WORKFLOWS names non-existent workflows: {unknown}"
 
 
+def test_every_placeholder_carrying_workflow_is_parked():
+    """Reverse completeness (Finding 6): any CI template with a non-date
+    placeholder must be in CONFIG_WORKFLOWS, or init would ship it active with
+    an unfilled placeholder (caught only at runtime otherwise)."""
+    import re
+    placeholder = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+    for tmpl in (HARNESS / "ci").glob("*.tmpl"):
+        names = set(placeholder.findall(tmpl.read_text(encoding="utf-8")))
+        needs_config = names - {"{{BOOTSTRAP_DATE}}"}  # date is always substituted
+        if needs_config:
+            wf = tmpl.name[:-5]
+            assert wf in hm.CONFIG_WORKFLOWS, (
+                f"{wf} carries {needs_config} but is not in CONFIG_WORKFLOWS — "
+                f"it would ship active with unfilled placeholders"
+            )
+
+
 def test_skills_source_exists():
     assert (HARNESS / hm.SKILLS_SRC).is_dir()
 

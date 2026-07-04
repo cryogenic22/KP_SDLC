@@ -17,6 +17,7 @@ FILE_MAP: list[tuple[str, str]] = [
     ("templates/CLAUDE.md.tmpl", "CLAUDE.md"),
     ("templates/AGENTS.md.tmpl", "AGENTS.md"),
     ("templates/gitignore.tmpl", ".gitignore"),
+    ("templates/gitattributes.tmpl", ".gitattributes"),
     ("templates/PULL_REQUEST_TEMPLATE.md.tmpl", ".github/PULL_REQUEST_TEMPLATE.md"),
     ("hooks/pre-commit-config.yaml.tmpl", ".pre-commit-config.yaml"),
     ("hooks/red-flag-attestation.sh", ".harness/hooks/red-flag-attestation.sh"),
@@ -37,6 +38,18 @@ DIR_MAP: list[tuple[str, str]] = [
 
 WORKFLOWS_DEST = ".github/workflows"
 WORKFLOWS_PARKED = ".github/workflows-parked"
+
+# Files whose pre-existence means the target is not a clean birth: `sdlc init`
+# generates/owns them, so a pre-existing copy is user content init must not
+# clobber (CODEOWNERS) or silently shadow (CLAUDE.md). init refuses when any is
+# present *unless* the repo already carries our manifest (an init re-run). Layer
+# the harness into an existing repo with `sdlc bootstrap` instead.
+GATING_FILES: list[str] = [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "protected-surface.txt",
+    ".github/CODEOWNERS",
+]
 
 # Workflows that carry config placeholders no generic init can fill (they gate
 # a stack that does not exist yet). They are copied to workflows-parked/ instead

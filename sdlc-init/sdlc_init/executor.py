@@ -15,7 +15,7 @@ from typing import Callable
 
 from .manifest import InitManifest
 
-_PLACEHOLDER = re.compile(r"\{\{[A-Z_]+\}\}")
+_PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 
 
 @dataclass
@@ -66,7 +66,9 @@ def install_file(ctx: InitContext, src: Path, dest_rel: str) -> str | None:
         return dest_rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     text = _apply_subs(src.read_text(encoding="utf-8"), ctx.subs)
-    dest.write_text(text, encoding="utf-8")
+    # Force LF: on Windows, text-mode writes translate \n→\r\n, which puts CRLF
+    # into shipped .sh/.yml files and breaks POSIX CI ("bad interpreter: ^M").
+    dest.write_text(text, encoding="utf-8", newline="\n")
     if src.suffix == ".sh":
         dest.chmod(dest.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return dest_rel
@@ -91,7 +93,11 @@ def run(ctx: InitContext, phases: list[Callable[[InitContext], PhaseResult]]) ->
     """Run phases in order, accumulating results on ctx (so a later phase — e.g.
     write_manifest — can read earlier outcomes). Journals unless dry-run."""
     for phase in phases:
-        result = phase(ctx)
+        try:
+            result = phase(ctx)
+        except Exception as exc:  # a phase must never crash the run — record + journal
+            result = PhaseResult(getattr(phase, "__name__", "phase"), "fail",
+                                 detail=str(exc)[:200])
         ctx.results.append(result)
         n = len(result.changes)
         ctx.log(f"  [{result.status:4}] {result.name}"
@@ -105,6 +111,6 @@ def run(ctx: InitContext, phases: list[Callable[[InitContext], PhaseResult]]) ->
 def _write_journal(ctx: InitContext, results: list[PhaseResult]) -> None:
     journal = ctx.target / ".harness" / "init-journal.jsonl"
     journal.parent.mkdir(parents=True, exist_ok=True)
-    with journal.open("a", encoding="utf-8") as fh:
+    with journal.open("a", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps({"as_of": ctx.as_of,
                              "phases": [r.as_dict() for r in results]}) + "\n")

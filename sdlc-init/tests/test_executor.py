@@ -140,6 +140,79 @@ def test_bootstrap_parks_but_leaves_name_placeholder():
         assert hm.CONFIG_WORKFLOWS <= {p.name for p in (t / hm.WORKFLOWS_PARKED).glob("*.yml")}
 
 
+# ── Regressions from the adversarial review ──────────────────────────
+
+
+def test_refuses_preexisting_codeowners_no_data_loss():
+    """BLOCKER: init must not overwrite a hand-authored CODEOWNERS."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / ".github").mkdir()
+        original = "*.py @security-team\ndocs/ @docs-team\n"
+        (t / ".github/CODEOWNERS").write_text(original, encoding="utf-8")
+        rc = _init(t)
+        assert rc == 2, "init should refuse a repo with a pre-existing CODEOWNERS"
+        assert (t / ".github/CODEOWNERS").read_text(encoding="utf-8") == original, \
+            "pre-existing CODEOWNERS was clobbered"
+
+
+def test_refuses_preexisting_gating_file_no_vacuous_green():
+    """MAJOR: a pre-existing CLAUDE.md must block init, not be silently skipped
+    while the repo is reported gated."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / "CLAUDE.md").write_text("# my own contract\n", encoding="utf-8")
+        assert _init(t) == 2
+        assert (t / "CLAUDE.md").read_text(encoding="utf-8") == "# my own contract\n"
+        assert not (t / ".harness/manifest.json").exists(), "init provisioned despite conflict"
+
+
+def test_nongating_files_do_not_block():
+    """A pre-existing README/LICENSE is fine — only gating files block."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / "README.md").write_text("hi\n", encoding="utf-8")
+        assert _init(t) == 0
+        assert (t / "README.md").read_text(encoding="utf-8") == "hi\n"  # untouched
+
+
+def test_copied_shell_scripts_are_lf():
+    """Finding 3: shipped .sh must be LF, or POSIX CI breaks on CRLF."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        _init(t)
+        sh = (t / ".harness/hooks/red-flag-attestation.sh").read_bytes()
+        assert b"\r\n" not in sh, "shell script shipped with CRLF line endings"
+
+
+def test_manifest_has_overall_status():
+    """Finding 7: manifest must self-describe success, not imply it by presence."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        _init(t)
+        m = json.loads((t / ".harness/manifest.json").read_text(encoding="utf-8"))
+        assert m["status"] == "ok"
+        assert "\\" not in m["engine"]["source"], "engine source path not portable"
+
+
+def test_raising_phase_becomes_fail_not_crash():
+    """Finding 5: a phase that raises is recorded as fail and still journaled."""
+    from sdlc_init.executor import InitContext, PhaseResult, run
+    from sdlc_init.manifest import InitManifest
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        ctx = InitContext(
+            manifest=InitManifest("D", "@t", t, ENGINE),
+            harness_dir=ENGINE / "harness", as_of="2026-01-01",
+            subs={}, dry_run=False, log=lambda _m: None,
+        )
+        def _boom(_c):
+            raise RuntimeError("kaboom")
+        results = run(ctx, [_boom])
+        assert results[0].status == "fail" and "kaboom" in results[0].detail
+        assert (t / ".harness/init-journal.jsonl").exists(), "journal not written after failure"
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [(n, o) for n, o in sorted(globals().items())

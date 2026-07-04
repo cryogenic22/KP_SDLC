@@ -64,12 +64,14 @@ def build_repo_manifest(m: InitManifest, as_of: str, phase_results: list[dict]) 
     return {
         "schema": SCHEMA,
         "sdlc_init_version": SDLC_INIT_VERSION,
+        # Self-describing: manifest presence alone must not read as success.
+        "status": "ok" if all(p.get("status") != "fail" for p in phase_results) else "failed",
         "project_name": m.project_name,
         "owner": m.owner,
         "profile": m.profile,
         "created": as_of,
         "engine": {
-            "source": str(m.engine_root),
+            "source": m.engine_root.as_posix(),  # portable in a committed file
             "sha": engine_sha(m.engine_root),
             "version": engine_version(m.engine_root),
         },

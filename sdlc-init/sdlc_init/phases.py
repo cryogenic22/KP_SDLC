@@ -137,6 +137,11 @@ def write_manifest(ctx: InitContext) -> PhaseResult:
         return PhaseResult("write_manifest", "dry", detail="would write .harness/manifest.json")
     manifest = build_repo_manifest(ctx.manifest, ctx.as_of, [r.as_dict() for r in ctx.results])
     dest = write_repo_manifest(ctx.target, manifest)
-    return PhaseResult("write_manifest", "ok",
-                       detail=f"engine pinned @ {manifest['engine']['sha'][:8]}",
-                       changes=[ctx.rel(dest)])
+    sha = manifest["engine"]["sha"]
+    if sha == "unknown":
+        ctx.log("  [warn] engine SHA could not be resolved (engine_root is not a "
+                "git checkout) — the repo is NOT pinned to a specific engine commit.")
+        detail = "engine SHA unknown — not pinned"
+    else:
+        detail = f"engine pinned @ {sha[:8]}"
+    return PhaseResult("write_manifest", "ok", detail=detail, changes=[ctx.rel(dest)])
