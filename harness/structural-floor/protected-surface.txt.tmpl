@@ -4,11 +4,10 @@
 # the configs, and the floor mechanism itself. Editing any of these requires
 # the owner's review via the generated .github/CODEOWNERS.
 #
-# SETUP:
-#   1. Replace {{OWNER}} below with your reviewing owner/team (e.g. @your-org/leads).
-#   2. Uncomment / add the paths that define "success" for this project.
-#   3. Run:  python scripts/gen_codeowners.py   (writes .github/CODEOWNERS)
-#   4. Commit protected-surface.txt AND .github/CODEOWNERS together.
+# `sdlc init` fills {{OWNER}}, generates .github/CODEOWNERS, and runs the sync
+# test for you. If you copied the harness by hand: replace {{OWNER}}, then run
+#   python scripts/gen_codeowners.py   (writes .github/CODEOWNERS)
+# and commit protected-surface.txt AND .github/CODEOWNERS together.
 #
 # A sync test (tests/test_protected_surface_sync.py) and the structural-floor
 # CI gate fail the build if the two ever drift apart — so the success-
@@ -17,14 +16,18 @@
 # default-owner: {{OWNER}}
 
 # — Quality Gate config (the bar: rules, PRS weights, thresholds)
-# .quality-gate.json
-# quality-gate/quality-gate.config.json
+.quality-gate.json
 
-# — Cathedral Keeper config (enabled policies, severities)
+# — Cathedral Keeper config (enabled policies, severities) — uncomment once configured
 # .cathedral-keeper.json
 
 # — CI gate definitions
 .github/workflows/
+
+# — Agent operating contract + session machinery: tampering here could
+#   silently weaken the gates or disable the session-memory receipts layer.
+CLAUDE.md
+.claude/settings.json
 
 # — The structural floor itself (keep these — the mechanism protects itself)
 protected-surface.txt

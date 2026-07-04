@@ -5,13 +5,14 @@ SHELL := /bin/bash
 QG_DIR   := quality-gate
 CK_DIR   := cathedral-keeper
 RPT_DIR  := reporting
+INIT_DIR := sdlc-init
 ROOT     := $(shell pwd)
 
 # ── Test targets ─────────────────────────────────────────────────────
 
-.PHONY: test test-qg test-ck test-reporting report sarif clean help
+.PHONY: test test-qg test-ck test-reporting test-init report sarif clean help
 
-test: test-qg test-ck test-reporting ## Run all test suites
+test: test-qg test-ck test-reporting test-init ## Run all test suites
 	@echo ""
 	@echo "All test suites completed."
 
@@ -55,6 +56,20 @@ test-reporting: ## Run Reporting tests
 	done; \
 	echo ""; \
 	echo "Reporting: $$passed passed, $$failed failed"; \
+	[ "$$failed" -eq 0 ]
+
+test-init: ## Run sdlc-init tests
+	@echo "=== sdlc-init Tests ==="
+	@passed=0; failed=0; \
+	for f in $(INIT_DIR)/tests/test_*.py; do \
+		if python "$$f"; then \
+			passed=$$((passed + 1)); \
+		else \
+			failed=$$((failed + 1)); \
+		fi; \
+	done; \
+	echo ""; \
+	echo "sdlc-init: $$passed passed, $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
 # ── Analysis targets ─────────────────────────────────────────────────

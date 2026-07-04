@@ -14,6 +14,7 @@ dependencies = []
 [project.scripts]
 qg = "quality_gate:main"
 ck = "cathedral_keeper.cli:main"
+sdlc = "sdlc_init.cli:main"
 
 # Explicit mapping: component homes keep their product-facing hyphenated names
 # (quality-gate/, cathedral-keeper/) while the importable packages inside them
@@ -29,8 +30,10 @@ packages = [
     "cathedral_keeper",
     "cathedral_keeper.policies",
     "cathedral_keeper.integrations",
+    "sdlc_init",
 ]
 
 [tool.setuptools.package-dir]
 "" = "quality-gate"
 cathedral_keeper = "cathedral-keeper/cathedral_keeper"
+sdlc_init = "sdlc-init/sdlc_init"
