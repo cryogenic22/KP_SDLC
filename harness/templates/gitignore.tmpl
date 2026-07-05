@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / web
+node_modules/
+.next/
+coverage/
+
+# Quality reports (generated)
+.quality-reports/
+
+# Agent session machinery: share the hooks config and the memory ledger,
+# keep the rest of .claude/ local.
+.claude/*
+!.claude/settings.json
+!.claude/ctx/
+!.claude/skills/
+!.claude/commands/
+
+# OS noise
+.DS_Store
+Thumbs.db
