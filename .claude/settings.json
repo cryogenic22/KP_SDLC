@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -P harness/hooks/reuse_injector.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [

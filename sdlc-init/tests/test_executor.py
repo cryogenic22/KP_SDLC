@@ -213,6 +213,47 @@ def test_raising_phase_becomes_fail_not_crash():
         assert (t / ".harness/init-journal.jsonl").exists(), "journal not written after failure"
 
 
+# ── E0.9: PreToolUse reuse-injector wiring ────────────────────────────
+
+
+def test_born_repo_ships_pretooluse_hook():
+    """E0.9: init must wire the reuse injector — .claude/settings.json parses,
+    a PreToolUse hook command references .harness/hooks/reuse_injector.py, and
+    the injector script itself ships."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        assert _init(t) == 0
+        settings_path = t / ".claude/settings.json"
+        assert settings_path.exists(), ".claude/settings.json not shipped"
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        entries = settings["hooks"]["PreToolUse"]
+        commands = [h.get("command", "")
+                    for entry in entries for h in entry.get("hooks", [])]
+        assert any(".harness/hooks/reuse_injector.py" in c for c in commands), \
+            f"no PreToolUse command references the injector: {commands}"
+        assert (t / ".harness/hooks/reuse_injector.py").exists(), \
+            "injector script not shipped to .harness/hooks/"
+
+
+def test_preexisting_user_settings_preserved():
+    """E0.9: a user-owned .claude/settings.json must be byte-unchanged
+    (skip-if-exists), and the skipped hook wiring must be surfaced in the
+    copy_harness phase detail — not silently omitted."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        (t / ".claude").mkdir(parents=True)
+        settings_file = t / ".claude/settings.json"
+        sentinel = b'{"hooks": {}, "sentinel": "user-owned"}\n'
+        settings_file.write_bytes(sentinel)
+        assert _init(t) == 0
+        assert settings_file.read_bytes() == sentinel, \
+            "user-owned settings.json was modified"
+        m = json.loads((t / ".harness/manifest.json").read_text(encoding="utf-8"))
+        copy = next(p for p in m["phases"] if p["name"] == "copy_harness")
+        assert "settings.json" in copy["detail"] and "skip" in copy["detail"].lower(), \
+            f"skipped hook wiring not surfaced in phase detail: {copy['detail']!r}"
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [(n, o) for n, o in sorted(globals().items())
