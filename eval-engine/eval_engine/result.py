@@ -29,6 +29,11 @@ _ANTI_SOFT = "EE-ANTI-CASE-SOFT"
 _ANTI_INCONCLUSIVE = "EE-ANTI-CASE-INCONCLUSIVE"
 _KIND_UNIMPLEMENTED = "EE-KIND-NOT-IMPLEMENTED"
 _TARGET_FIELDS = ("checks", "expected", "property", "steps", "trace", "judge")
+# A FAIL carrying one of these codes means the target could not be EVALUATED
+# (no output, no reference, a vacuous check, an unknown matcher) -- NOT that a
+# guard fired on real content. An anti_case must never read such a FAIL as "the
+# guard fired", or a broken target (missing fixture, matcher typo) would pass it.
+_UNEVALUABLE = (_NO_OUTPUT, _GOLDEN_NO_REF, "EE-VACUOUS-CHECK", "EE-UNKNOWN-MATCHER")
 
 
 class Outcome(str, Enum):
@@ -245,14 +250,26 @@ def _synthesize_anti_target(case) -> dict:
 
 def _run_anti_case(case, loaded, judge_model_id) -> CaseResult:
     inner = _evaluate_case(_synthesize_anti_target(case), loaded, judge_model_id)
-    if inner.outcome is Outcome.FAIL:
+    if inner.outcome is Outcome.FAIL and not _is_unevaluable(inner.reason):
+        # the guard genuinely evaluated the payload and rejected it
         return _result_from(case, CaseKind.ANTI_CASE, True, "")
     if inner.outcome is Outcome.PASS:
         return _result_from(case, CaseKind.ANTI_CASE, False,
                             f"{_ANTI_SOFT}: guard no longer fires "
                             f"(target {case.get('target_kind')!r} passed)")
+    # a SKIP, or a FAIL the guard could not evaluate (no output / missing
+    # fixture / vacuous check / unknown matcher) is inconclusive -- fail closed,
+    # never read as "the guard fired".
     return _result_from(case, CaseKind.ANTI_CASE, False,
-                        f"{_ANTI_INCONCLUSIVE}: target skipped ({inner.reason})")
+                        f"{_ANTI_INCONCLUSIVE}: target {inner.outcome.value} "
+                        f"({inner.reason})")
+
+
+def _is_unevaluable(reason: str) -> bool:
+    """True when a FAIL reason means the guard could not evaluate real content,
+    rather than genuinely rejecting it -- so an anti_case cannot count it as the
+    guard firing."""
+    return any(code in reason for code in _UNEVALUABLE)
 
 
 _DISPATCH = {

@@ -168,10 +168,50 @@ def test_sections_present_fails_on_vacuous_output():
 
 
 def test_assertion_unknown_matcher_and_empty_checks_fail_closed():
-    unknown, _ = evaluate_assertion([{"matcher": "nope"}], "text")
-    assert unknown is False
+    unknown, reason = evaluate_assertion([{"matcher": "nope"}], "text")
+    assert unknown is False and "EE-UNKNOWN-MATCHER" in reason
     vacuous, reason = evaluate_assertion([], "text")
-    assert vacuous is False and "vacuous" in reason
+    assert vacuous is False and "EE-VACUOUS-CHECK" in reason
+
+
+def test_positive_matcher_with_empty_required_set_fails_closed():
+    # BLOCKER regression: a positive matcher that requires NOTHING must not pass
+    # any output -- it verified nothing. (contains/sections_present, empty or
+    # empty-string patterns.)
+    assert evaluate_assertion([{"matcher": "contains"}], "anything")[0] is False
+    assert evaluate_assertion(
+        [{"matcher": "contains", "args": {"patterns": [""]}}], "x")[0] is False
+    assert evaluate_assertion(
+        [{"matcher": "sections_present", "args": {"headings": []}}], "# H\n")[0] is False
+    # end-to-end: a single active vacuous-check case makes ee run fail closed.
+    vacuous = {"schema": "sdlc/golden-case@1", "id": "vac", "kind": "assertion",
+               "determinism": "deterministic", "status": "active",
+               "lineage": {"route": "authored"}, "input": {"text": ""},
+               "checks": [{"matcher": "contains"}]}
+    card = evaluate_corpus(_corpus([vacuous]), scope="harness-only")
+    assert card.ok is False and card.passed == 0
+
+
+def test_anti_case_with_unevaluable_target_is_inconclusive_not_pass():
+    # MAJOR regression: an anti-case target that FAILS because it could not be
+    # evaluated (typo'd matcher, no output) must be INCONCLUSIVE, never read as
+    # "the guard fired" -- otherwise a broken guard passes with zero protection.
+    typo = _anti_case_active(
+        "typo-guard", [{"matcher": "containz", "args": {"patterns": ["Method"]}}])
+    card = evaluate_corpus(_corpus([typo]), scope="harness-only")
+    assert card.ok is False and card.passed == 0
+    assert any(f["id"] == "typo-guard" and "EE-ANTI-CASE-INCONCLUSIVE" in f["reason"]
+               for f in card.failures)
+    no_output = {"schema": "sdlc/golden-case@1", "id": "no-out", "kind": "anti_case",
+                 "determinism": "deterministic", "status": "active",
+                 "lineage": {"route": "red_team"}, "input": {},
+                 "target_kind": "assertion", "expected_verdict": "fail",
+                 "payload": {"checks": [{"matcher": "contains",
+                                         "args": {"patterns": ["Method"]}}]}}
+    card2 = evaluate_corpus(_corpus([no_output]), scope="harness-only")
+    assert card2.ok is False and card2.passed == 0
+    assert any(f["id"] == "no-out" and "EE-ANTI-CASE-INCONCLUSIVE" in f["reason"]
+               for f in card2.failures)
 
 
 # ── deterministic property invariants (heading + injection) ────────────────

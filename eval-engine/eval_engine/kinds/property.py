@@ -72,5 +72,5 @@ def evaluate_property(spec: dict, output: str) -> tuple:
     """Run the named invariant over ``output``. Unknown matcher fails CLOSED."""
     matcher = _MATCHERS.get(spec.get("matcher"))
     if matcher is None:
-        return False, f"unknown property matcher {spec.get('matcher')!r}"
+        return False, f"EE-UNKNOWN-MATCHER: property matcher {spec.get('matcher')!r}"
     return matcher(output)

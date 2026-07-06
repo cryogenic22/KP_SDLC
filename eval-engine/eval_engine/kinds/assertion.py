@@ -39,21 +39,31 @@ def _excludes(args: dict, output: str) -> tuple:
 
 
 def _contains(args: dict, output: str) -> tuple:
-    """Pass iff ALL required patterns appear (original patterns in the reason)."""
+    """Pass iff ALL required patterns appear (original patterns in the reason).
+
+    A positive matcher that lists NO (non-empty) patterns verifies nothing and
+    must fail closed -- otherwise it passes any output, incl. a vacuous one."""
     case_sensitive = bool(args.get("case_sensitive"))
     haystack = _normalise(output, case_sensitive)
-    absent = [pattern for pattern in _as_strings(args.get("patterns", []))
-              if pattern and not _present(pattern, haystack, case_sensitive)]
+    patterns = [pattern for pattern in _as_strings(args.get("patterns", []))
+                if pattern]
+    if not patterns:
+        return False, "EE-VACUOUS-CHECK: contains matcher lists no patterns"
+    absent = [pattern for pattern in patterns
+              if not _present(pattern, haystack, case_sensitive)]
     if absent:
         return False, f"required pattern(s) absent: {absent}"
     return True, ""
 
 
 def _sections_present(args: dict, output: str) -> tuple:
-    """Pass iff every named section heading appears in the output."""
+    """Pass iff every named section heading appears in the output. No headings
+    verifies nothing and fails closed (a vacuous positive matcher)."""
     haystack = output.lower()
-    missing = [head for head in _as_strings(args.get("headings", []))
-               if head.lower() not in haystack]
+    headings = [head for head in _as_strings(args.get("headings", [])) if head]
+    if not headings:
+        return False, "EE-VACUOUS-CHECK: sections_present lists no headings"
+    missing = [head for head in headings if head.lower() not in haystack]
     if missing:
         return False, f"required section(s) missing: {missing}"
     return True, ""
@@ -73,12 +83,12 @@ def evaluate_assertion(checks: list, output: str) -> tuple:
     checks nothing is a vacuous green and must never pass.
     """
     if not checks:
-        return False, "assertion has no checks (vacuous green)"
+        return False, "EE-VACUOUS-CHECK: assertion has no checks"
     reasons = []
     for check in checks:
         matcher = _MATCHERS.get(check.get("matcher"))
         if matcher is None:
-            return False, f"unknown assertion matcher {check.get('matcher')!r}"
+            return False, f"EE-UNKNOWN-MATCHER: assertion matcher {check.get('matcher')!r}"
         passed, reason = matcher(check.get("args", {}) or {}, output)
         if not passed:
             reasons.append(reason)
