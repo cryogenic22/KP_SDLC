@@ -40,7 +40,7 @@ The `kp-sdlc` quality platform runs at three points:
 
 | When | What | Where it lives |
 |---|---|---|
-| `PreToolUse` (Edit/Write) | JIT inject relevant principle subset | `.claude/settings.json` |
+| `PreToolUse` (Edit/Write) | Inject similar existing symbols (reuse check — exact clones + same-name matches) | `.claude/settings.json` → `.harness/hooks/reuse_injector.py` |
 | Pre-commit | ruff, format, mypy, QG (PRS ≥ 85), CK (architecture), red-flag attestation | `.pre-commit-config.yaml` |
 | CI on PR | All of the above + tests + coverage + bundle size + second-pass reviewer | `.github/workflows/` |
 

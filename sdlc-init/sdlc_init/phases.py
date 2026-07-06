@@ -78,8 +78,21 @@ def copy_harness(ctx: InitContext) -> PhaseResult:
         if dest_rel.startswith(hm.WORKFLOWS_DEST + "/"):
             assert_no_residual_placeholders(ctx, dest_rel)
 
+    # A pre-existing .claude/settings.json is user-owned and never clobbered
+    # (skip-if-exists), but that means the PreToolUse hook wiring was NOT
+    # applied — surface it, or the pipeline table is silently aspirational
+    # for exactly this repo.
+    detail = "harness installed"
+    settings_dest = ".claude/settings.json"
+    if (not ctx.dry_run and settings_dest not in changes
+            and any(dest == settings_dest for _src, dest in hm.FILE_MAP)
+            and (ctx.target / settings_dest).exists()):
+        detail += (f"; skipped {settings_dest} (pre-existing, left untouched) — "
+                   "PreToolUse hook wiring not applied; add the hooks block "
+                   "from harness/templates/claude-settings.json.tmpl manually")
+
     return PhaseResult("copy_harness", "dry" if ctx.dry_run else "ok",
-                       detail="harness installed", changes=changes)
+                       detail=detail, changes=changes)
 
 
 def park_readme(ctx: InitContext) -> PhaseResult:

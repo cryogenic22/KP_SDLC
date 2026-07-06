@@ -23,7 +23,7 @@ KP_SDLC
 | `templates/` | `CLAUDE.md` + `AGENTS.md` + `PULL_REQUEST_TEMPLATE.md` | ✅ |
 | `commands/` | Slash commands (`/principles`, `/review`, `/entropy-check`, `/before-i-commit`) | ✅ |
 | `decisions/` | ADR templates including the design-philosophy ADR | ✅ |
-| `hooks/` | Pre-commit base config + `red-flag-attestation.sh` + `second_pass_reviewer.py` | ✅ |
+| `hooks/` | Pre-commit base config + `red-flag-attestation.sh` + `second_pass_reviewer.py` + `reuse_injector.py` (PreToolUse reuse check, wired via `templates/claude-settings.json.tmpl`) | ✅ |
 | `ci/` | GitHub Actions workflow templates: `quality.yml`, `web.yml`, `eval.yml`, `second-pass-reviewer.yml` | ✅ |
 | `scripts/` | `setup.sh` and `check.sh` one-command entry points | ✅ |
 | `bootstrap.sh` | Idempotent installer | ✅ |
@@ -61,13 +61,14 @@ bash /path/to/KP_SDLC/harness/bootstrap.sh /path/to/some-project
 
 The script is idempotent. Re-run after any harness update — existing files are skipped, new ones added. To force overwrite an individual file: delete it first, then re-run.
 
-### What gets installed (20 files at first bootstrap)
+### What gets installed (22 files at first bootstrap)
 
 ```
 target-project/
 ├── CLAUDE.md                                       Tier 0 + Tier 1 condensed
 ├── AGENTS.md                                       same content for AGENTS.md convention
 ├── .claude/
+│   ├── settings.json                               PreToolUse reuse-injector hook wiring
 │   ├── skills/
 │   │   ├── design-philosophy/SKILL.md              Tier 0/1/2 — 4 sources
 │   │   └── coding-discipline/SKILL.md              Karpathy guidelines (MIT)
@@ -88,7 +89,8 @@ target-project/
 ├── .harness/
 │   └── hooks/
 │       ├── red-flag-attestation.sh                 prepare-commit-msg: appends Self-review skeleton
-│       └── second_pass_reviewer.py                 stdlib-only Claude API client (used by CI)
+│       ├── second_pass_reviewer.py                 stdlib-only Claude API client (used by CI)
+│       └── reuse_injector.py                       PreToolUse: injects similar existing symbols (reuse check)
 ├── .pre-commit-config.yaml                         universal hygiene + QG + CK + red-flag-attestation
 ├── docs/decisions/
 │   ├── _template.md                                ADR template

@@ -40,7 +40,7 @@ Adopt the KP_SDLC `harness/` layer. It synthesises four sources into one tiered 
 
 | When | Mechanism | Survives high context? |
 |---|---|---|
-| `PreToolUse` (Edit/Write) | JIT inject relevant principle subset | ✅ Re-injects at moment of writing |
+| `PreToolUse` (Edit/Write) | Inject similar existing symbols (reuse check via `.harness/hooks/reuse_injector.py`) | ✅ Injects at moment of writing |
 | Pre-commit | ruff/mypy/QG/CK + `red-flag-attestation` (appends Self-review skeleton) | ✅ Mechanical; attestation invites attention |
 | CI on PR | All gates + `second-pass-reviewer` (independent Claude session, fresh context, only diff + principles) | ✅ No shared context to drift from |
 
