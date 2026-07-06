@@ -19,7 +19,9 @@ Checks, in document order of the required sections:
     (a claim of verification with nothing checked is vacuous).
 
 HTML comments are stripped first so the template's own instructional
-comment can never satisfy a check.
+comment can never satisfy a check. Stripping matches GitHub's rendering:
+a comment ends at `-->` or, if unterminated, at end of document — so an
+unclosed `<!--` (which makes the PR render blank) cannot pass either.
 
 Exit codes: 0 = pass; 1 = violations (listed on stdout, deterministic
 order); 2 = PR_BODY env var missing — a workflow wiring error, kept
@@ -45,7 +47,11 @@ REQUIRED: Tuple[str, ...] = ("Spec", "Summary", "Verification", "Self-review")
 # judgment — see the tests before tuning it.
 MIN_CONTENT_CHARS = 20
 
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+# GitHub ends an HTML comment at `-->` OR at end of document (CommonMark
+# HTML block type 2 / HTML5 eof-in-comment) and drops it when rendering, so
+# an unterminated `<!--` swallows the entire rest of the body. Strip with
+# the same semantics or a blank-rendering PR body would pass the gate.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
 _H2_RE = re.compile(r"^##\s+(.+?)\s*$")
 _CHECKED_BOX_RE = re.compile(r"^\s*[-*]\s*\[[xX]\]", re.MULTILINE)
 _UNCHECKED_BOX_RE = re.compile(r"^\s*[-*]\s*\[\s*\]")

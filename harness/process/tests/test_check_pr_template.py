@@ -114,6 +114,19 @@ def test_gutted_body_fails():
         assert any(name in v for v in violations), (
             f"no violation names empty section '{name}': {violations}"
         )
+    # Exit-code contract: main() is the ONLY thing the CI process job
+    # consumes, so pin exit 1 on violations end-to-end — otherwise a future
+    # `return 1` -> `return 0` edit turns every born repo's gate vacuous
+    # green (adversarial review: this exact mutation survived the suite).
+    saved = os.environ.get("PR_BODY")
+    os.environ["PR_BODY"] = GUTTED_BODY
+    try:
+        assert main() == 1, "main() must exit 1 when violations exist"
+    finally:
+        if saved is None:
+            del os.environ["PR_BODY"]
+        else:
+            os.environ["PR_BODY"] = saved
 
 
 def test_unedited_template_verbatim_fails():
@@ -144,6 +157,25 @@ This comment alone must never satisfy the checker.
     assert len(violations) == len(REQUIRED), violations
     for v in violations:
         assert "missing" in v.lower(), f"expected 'missing' violations, got: {violations}"
+
+
+def test_unterminated_comment_hides_rest_of_body():
+    """ATK-1 regression: GitHub ends an HTML comment at `-->` OR at end of
+    document (CommonMark HTML block type 2 / HTML5 eof-in-comment), and its
+    sanitizer drops comments — so a body starting with an unterminated
+    `<!--` renders COMPLETELY BLANK no matter what follows. The checker must
+    strip with the same semantics and fail such a body, not report green."""
+    violations = check_body("<!--\n" + FULL_BODY)
+    assert len(violations) == len(REQUIRED), (
+        f"unterminated <!-- swallows the whole body on GitHub; expected one "
+        f"missing-section violation per required section, got: {violations}"
+    )
+    for v in violations:
+        assert "missing" in v.lower(), f"expected 'missing' violations: {violations}"
+    # Anti-over-strip: a stray `-->` with no opener is literal text on
+    # GitHub; the otherwise-filled body must still pass.
+    stray = FULL_BODY.replace("## Summary", "-->\n\n## Summary")
+    assert check_body(stray) == [], "stray --> without <!-- must not strip anything"
 
 
 def test_self_review_heading_matched_by_prefix():
