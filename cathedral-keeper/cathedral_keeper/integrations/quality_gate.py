@@ -15,6 +15,68 @@ from cathedral_keeper.retry import RetryFailure, retry_call
 # Sentinel distinguishing "QG returned no issues" from "QG failed to run"
 _QG_FAILED = object()
 
+# The QG ratchet baseline (E0.4/E0.6). CK reads the same committed artifact
+# QG's --mode check reads, so both gates agree on what "tolerated debt" is.
+_BASELINE_FILENAME = ".quality-gate.baseline.json"
+
+# One consistent PRS floor across QG and CK ingestion (was ambiguous ~90
+# vs 85 historically; reconciled to QG's floor in ADR 0003).
+PRS_FLOOR = 85.0
+
+
+def _load_baseline_entries(root: Path, cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Per-file entries of the committed QG baseline, '/'-normalized keys.
+
+    Fail-open, toward strictness: a missing or corrupt baseline returns
+    None and ingestion keeps its pre-baseline behavior (sub-floor and
+    errored files stay HIGH) — a broken baseline can only make CK
+    noisier, never quieter.
+    """
+    rel = Path(str(cfg.get("baseline_path") or _BASELINE_FILENAME))
+    path = rel if rel.is_absolute() else root / rel
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    files = data.get("files") if isinstance(data, dict) else None
+    if not isinstance(files, dict):
+        return None
+    return {
+        str(key).replace("\\", "/"): value
+        for key, value in files.items()
+        if isinstance(value, dict)
+    }
+
+
+def _within_baseline(entry: Dict[str, Any], base: Dict[str, Any]) -> bool:
+    """True iff the file has not regressed vs its baseline entry.
+
+    Same predicate as qg/baseline.py (errors/warnings not up, PRS not
+    down); a vetoed file is never within baseline (a baseline never masks
+    a security veto). Malformed (non-numeric) baseline values coerce to
+    the strictest bound (0 counts / PRS 100) so a hand-edited entry
+    degrades toward HIGH severity, not low.
+    """
+    def _num(value, default, cast):
+        return cast(value) if isinstance(value, (int, float)) else default
+
+    if bool(entry.get("vetoed")):
+        return False
+    return (
+        int(entry.get("errors", 0)) <= _num(base.get("errors"), 0, int)
+        and int(entry.get("warnings", 0)) <= _num(base.get("warnings"), 0, int)
+        and float(entry.get("score", 0.0)) >= _num(base.get("prs"), 100.0, float)
+    )
+
+
+def _is_baselined(baseline: Optional[Dict[str, Any]], file: str,
+                  entry: Dict[str, Any]) -> bool:
+    """True iff *file* has a baseline entry it has not regressed against."""
+    if baseline is None:
+        return False
+    base = baseline.get(str(file).replace("\\", "/"))
+    return base is not None and _within_baseline(entry, base)
+
 
 def run_quality_gate(ctx: IntegrationContext, cfg: Dict[str, Any]) -> List[Finding]:
     """
@@ -74,7 +136,9 @@ def run_quality_gate(ctx: IntegrationContext, cfg: Dict[str, Any]) -> List[Findi
 
     prs = dict(payload.get("prs", {}) or {})
     stats = _collect_issue_stats(list(payload.get("issues", []) or []))
-    return _findings_from_prs(prs=prs, qg_path=qg_path, stats=stats)
+    baseline = _load_baseline_entries(ctx.root, cfg)
+    return _findings_from_prs(prs=prs, qg_path=qg_path, stats=stats,
+                              baseline=baseline)
 
 
 def _run_quality_gate_json(
@@ -86,10 +150,12 @@ def _run_quality_gate_json(
         (payload_dict, None) on success.
         ({}, error_string) on failure — caller MUST check error_info.
     """
-    args = [sys.executable, str(qg), "--root", str(root), "--mode", "audit", "--json", "--paths-from", str(paths_file)]
-
     def _call() -> subprocess.CompletedProcess:
-        return subprocess.run(args, capture_output=True, timeout=120)
+        return subprocess.run(
+            [sys.executable, str(qg), "--root", str(root), "--mode", "audit",
+             "--json", "--paths-from", str(paths_file)],
+            capture_output=True, timeout=120,
+        )
 
     result = retry_call(_call, max_retries=1, base_delay=1.0, transient_exceptions=(OSError, TimeoutError))
 
@@ -134,7 +200,10 @@ def _collect_issue_stats(issues: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"msgs": per_file_msgs, "rules": per_file_rules, "first_line": per_file_first_line}
 
 
-def _findings_from_prs(*, prs: Dict[str, Any], qg_path: str, stats: Dict[str, Any]) -> List[Finding]:
+def _findings_from_prs(
+    *, prs: Dict[str, Any], qg_path: str, stats: Dict[str, Any],
+    baseline: Optional[Dict[str, Any]] = None,
+) -> List[Finding]:
     per_file_msgs = stats.get("msgs") or {}
     per_file_rules = stats.get("rules") or {}
     per_file_first_line = stats.get("first_line") or {}
@@ -144,8 +213,9 @@ def _findings_from_prs(*, prs: Dict[str, Any], qg_path: str, stats: Dict[str, An
         score = float(entry.get("score", 100.0))
         errors = int(entry.get("errors", 0))
         warnings = int(entry.get("warnings", 0))
-        if errors <= 0 and score >= 85:
+        if errors <= 0 and score >= PRS_FLOOR:
             continue
+        baselined = _is_baselined(baseline, file, entry)
         top_rules = _top_rules(per_file_rules.get(file))
         fix_msgs = [clamp_snippet(m) for m in (per_file_msgs.get(file) or [])[:5] if m]
         line = int(per_file_first_line.get(file, 1))
@@ -159,19 +229,30 @@ def _findings_from_prs(*, prs: Dict[str, Any], qg_path: str, stats: Dict[str, An
                 warnings=warnings,
                 top_rules=top_rules,
                 fix_msgs=fix_msgs,
+                baselined=baselined,
             )
         )
     return sorted(findings, key=lambda f: float(f.metadata.get("prs", 100.0)))
 
 
 def _prs_finding(
-    *, file: str, line: int, qg_path: str, score: float, errors: int, warnings: int, top_rules: str, fix_msgs: List[str]
+    *, file: str, line: int, qg_path: str, score: float, errors: int,
+    warnings: int, top_rules: str, fix_msgs: List[str], baselined: bool = False,
 ) -> Finding:
     why = f"PRS={score:.1f} (errors={errors}, warnings={warnings}). Deterministic gate issues block safe change velocity."
+    if baselined:
+        # Known debt within the committed QG baseline entry: QG's ratchet
+        # already tolerates it, so CK must not re-gate it at high (the
+        # E0.6 double-gate). Kept visible at low; any regression, new
+        # file, or veto falls through to the strict severities below.
+        severity = "low"
+        why += " Within the committed QG baseline (tolerated debt — tracked, not blocking)."
+    else:
+        severity = "high" if errors > 0 or score < PRS_FLOOR else "medium"
     return Finding(
         policy_id="CK-INTEGRATION::quality_gate",
         title=f"Quality Gate PRS below threshold ({score:.1f})",
-        severity="high" if errors > 0 or score < 85 else "medium",
+        severity=severity,
         confidence="high",
         why_it_matters=why,
         evidence=[Evidence(file=file, line=line, snippet=clamp_snippet(top_rules or "quality-gate issues"), note="quality-gate summary")],
@@ -183,6 +264,7 @@ def _prs_finding(
             "errors": errors,
             "warnings": warnings,
             "top_rules": top_rules,
+            "baselined": baselined,
         },
     )
 

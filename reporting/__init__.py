@@ -39,22 +39,31 @@ def discover_repos(root):
     results = []
 
     # Single-repo mode: root itself has reports
-    qg = root / ".quality-reports" / "quality-gate-report.json"
-    ck = root / ".quality-reports" / "cathedral-keeper" / "report.json"
-    if qg.is_file() or ck.is_file():
-        results.append((root, qg if qg.is_file() else None, ck if ck.is_file() else None))
+    entry = _report_entry(root)
+    if entry:
+        results.append(entry)
         return results
 
     # Multi-repo mode: scan immediate subdirectories
     for child in sorted(root.iterdir()):
         if not child.is_dir():
             continue
-        qg = child / ".quality-reports" / "quality-gate-report.json"
-        ck = child / ".quality-reports" / "cathedral-keeper" / "report.json"
-        if qg.is_file() or ck.is_file():
-            results.append((child, qg if qg.is_file() else None, ck if ck.is_file() else None))
+        entry = _report_entry(child)
+        if entry:
+            results.append(entry)
 
     return results
+
+
+def _report_entry(repo_dir):
+    """(repo_dir, qg_path_or_None, ck_path_or_None) if reports exist, else None."""
+    qg = repo_dir / ".quality-reports" / "quality-gate-report.json"
+    ck = repo_dir / ".quality-reports" / "cathedral-keeper" / "report.json"
+    has_qg = qg.is_file()
+    has_ck = ck.is_file()
+    if not (has_qg or has_ck):
+        return None
+    return (repo_dir, qg if has_qg else None, ck if has_ck else None)
 
 
 # ---------------------------------------------------------------------------
@@ -172,9 +181,6 @@ def health_score(qg_data, ck_data):
         high_count = sum(1 for f in ck_only if f.get("severity") in ("high", "blocker"))
         med_count = sum(1 for f in ck_only if f.get("severity") == "medium")
         low_count = sum(1 for f in ck_only if f.get("severity") == "low")
-        total_ck_files = len(set(
-            e.get("file", "") for f in ck_only for e in f.get("evidence", [])
-        ))
         score -= min(high_count * 2, 25)
         score -= min(med_count * 0.5, 15)
         # Many low findings signal structural issues, but cap the impact

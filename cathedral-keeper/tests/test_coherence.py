@@ -164,7 +164,7 @@ def test_coherence_no_flag_finding_count_stable():
     assert len(drop_findings) == 0
 
 
-# ── Tests: Reverse-Direction Coherence (BUG-002) ─────────────────────
+# ── Tests: Reverse-Direction Coherence (red-team case 002) ───────────
 # QG screams red (many errors, zero-PRS files) but CK stays all-low.
 # This is the divergence scenario the red team flagged.
 

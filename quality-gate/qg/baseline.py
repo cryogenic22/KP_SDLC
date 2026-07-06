@@ -8,7 +8,9 @@ matches keys in POSIX CI. The ratchet then enforces non-regression:
   * A scanned file whose key is in the baseline passes iff
     errors <= baselined errors AND warnings <= baselined warnings AND
     PRS >= baselined PRS. Non-regressed below-floor files raise NO
-    'prs_score' error (legacy debt is tolerated, not endorsed).
+    'prs_score' error, and their pre-existing error findings are
+    excluded from the engine's pass/fail count (still fully reported) —
+    legacy debt is tolerated, not endorsed.
   * Any regression raises an ERROR with rule 'baseline_ratchet' that
     names the regressed metric (e.g. "errors 2 > baselined 1").
   * A vetoed file always fails — a baseline never masks a security veto.
@@ -340,7 +342,11 @@ def apply_ratchet(
 
     Issue dicts keep the engine's original relpath in 'file' so the call
     site can anchor them; stats carry baseline_files_matched /
-    baseline_ratchet_failed / baseline_new_files.
+    baseline_ratchet_failed / baseline_new_files. 'tolerated' lists the
+    normalized keys of baselined, non-regressed, non-vetoed files: their
+    pre-existing findings are known debt the caller must not fail on
+    (that toleration IS the brownfield unlock — without it a baselined
+    repo with any error-severity debt could never go green).
     """
     verdicts = compare_to_baseline(file_prs, baseline, min_score)
     pairs = [(rel, verdicts[normalize_key(rel)]) for rel in (file_prs or {})]
@@ -355,6 +361,10 @@ def apply_ratchet(
     return {
         "issues": issues,
         "failed": len(issues),
+        "tolerated": sorted(
+            normalize_key(rel) for rel, v in pairs
+            if v["in_baseline"] and not v["failed"]
+        ),
         "stats": {
             "baseline_files_matched": sum(1 for _, v in pairs if v["in_baseline"]),
             "baseline_ratchet_failed": sum(
