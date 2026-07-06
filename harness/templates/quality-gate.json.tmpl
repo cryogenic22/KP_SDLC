@@ -1,0 +1,34 @@
+{
+  "_note": "Repo Quality Gate override — deep-merged over the vendored tools/qa/quality-gate/quality-gate.config.json. Shipped by sdlc init; protected by CODEOWNERS (protected-surface.txt).",
+  "paths": {
+    "_note_lists_replace": "Deep-merge REPLACES lists: setting paths.exclude here discards the portable defaults, so they are restated in full below before adding the repo-specific entries.",
+    "_note_anchor": "'tools/qa/**' must stay literally anchored like this — the '**/tools/qa/**' variant silently fails fnmatch (no match, engine scans itself).",
+    "_note_root_twins": "Same anchoring lesson: '**/node_modules/**' needs a literal '/' before the name, so it matches NESTED dirs but NOT a repo-ROOT node_modules/x.py. The root-anchored twins below cover root-level artifact/env dirs (npm ci, virtualenvs, build output) — without them a JS/TS target is red on its first CI run.",
+    "exclude": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+      "**/.git/**",
+      "**/__pycache__/**",
+      "**/.pytest_cache/**",
+      "**/.venv/**",
+      "**/.venv*/**",
+      "**/venv/**",
+      "**/venv*/**",
+      "**/site-packages/**",
+      "**/.quality-reports/**",
+      "**/coverage/**",
+      "node_modules/**",
+      "dist/**",
+      "build/**",
+      ".next/**",
+      ".venv/**",
+      ".venv*/**",
+      "venv/**",
+      "venv*/**",
+      "coverage/**",
+      "tools/qa/**"
+    ]
+  }
+}

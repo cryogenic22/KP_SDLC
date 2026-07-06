@@ -1,0 +1,53 @@
+# Engine gates — bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
+# ACTIVE from birth: runs the vendored Quality Gate + Cathedral Keeper
+# (tools/qa/) against the whole repo. No stack assumptions — it needs only
+# Python. The stack-conditional quality.yml (ruff/mypy/pytest/Postgres)
+# stays parked until its placeholders are fillable.
+#
+# These command lines are single-sourced from sdlc_init/harness_map.py
+# (QG_GATE_CMD / CK_GATE_CMD): `sdlc init`'s born_gated_proof phase runs the
+# identical invocation locally, so this gate and the proof cannot drift.
+name: engine-gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: engine-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine-gates:
+    name: QG + CK (vendored engines)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # --root . is REQUIRED: the vendored QG defaults its root to tools/qa
+      # (the script dir's parent), which would mis-anchor the excludes and
+      # the root-level .quality-gate.json discovery.
+      - name: Quality Gate (PRS >= 85, hard block)
+        run: python tools/qa/quality-gate/quality_gate.py --root . --config .quality-gate.json --json --sarif qg.sarif
+
+      - name: Cathedral Keeper (architecture)
+        run: python tools/qa/cathedral-keeper/ck.py analyze --root . --blast-radius
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: qg.sarif
+        continue-on-error: true

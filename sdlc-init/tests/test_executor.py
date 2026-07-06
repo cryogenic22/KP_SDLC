@@ -29,36 +29,47 @@ def _init(target: Path, *extra: str) -> int:
                  "--as-of", "2026-01-01", *extra])
 
 
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _workflows(t: Path) -> tuple[list[Path], list[Path]]:
+    """(active, parked) workflow files under .github/ — one tree walk."""
+    wfs = sorted((t / ".github").rglob("*.yml"))
+    return ([p for p in wfs if p.parent == t / hm.WORKFLOWS_DEST],
+            [p for p in wfs if p.parent == t / hm.WORKFLOWS_PARKED])
+
+
 def test_init_produces_born_gated_repo():
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
         assert _init(t) == 0
 
-        # Harness judgment layer installed.
-        assert (t / ".claude/skills/design-philosophy/SKILL.md").exists()
-        assert (t / ".claude/commands/review.md").exists()
-        assert (t / "CLAUDE.md").exists()
+        # Harness judgment layer, structural floor, and engine-pin manifest.
+        for rel in (".claude/skills/design-philosophy/SKILL.md",
+                    ".claude/commands/review.md",
+                    "CLAUDE.md",
+                    ".github/CODEOWNERS",
+                    ".harness/manifest.json",
+                    ".harness/init-journal.jsonl"):
+            assert (t / rel).exists(), f"missing {rel}"
 
         # Placeholders filled — no {{...}} left in the operating contract.
-        claude = (t / "CLAUDE.md").read_text(encoding="utf-8")
+        claude = _read(t / "CLAUDE.md")
         assert "Demo" in claude and "{{" not in claude
 
-        # Structural floor generated and in sync.
-        assert (t / ".github/CODEOWNERS").exists()
-        surface = (t / "protected-surface.txt").read_text(encoding="utf-8")
+        # Structural floor owner-filled and protecting the gate config.
+        surface = _read(t / "protected-surface.txt")
         assert "@tester" in surface and ".quality-gate.json" in surface
-
-        # Engine pinned in the manifest.
-        assert (t / ".harness/manifest.json").exists()
-        assert (t / ".harness/init-journal.jsonl").exists()
 
 
 def test_config_workflows_parked_active_ones_live():
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
         _init(t)
-        active = {p.name for p in (t / hm.WORKFLOWS_DEST).glob("*.yml")}
-        parked = {p.name for p in (t / hm.WORKFLOWS_PARKED).glob("*.yml")}
+        active_wfs, parked_wfs = _workflows(t)
+        active = {p.name for p in active_wfs}
+        parked = {p.name for p in parked_wfs}
         assert "structural-floor.yml" in active
         assert "second-pass-reviewer.yml" in active
         assert hm.CONFIG_WORKFLOWS <= parked, f"expected {hm.CONFIG_WORKFLOWS} parked, got {parked}"
@@ -252,6 +263,54 @@ def test_preexisting_user_settings_preserved():
         copy = next(p for p in m["phases"] if p["name"] == "copy_harness")
         assert "settings.json" in copy["detail"] and "skip" in copy["detail"].lower(), \
             f"skipped hook wiring not surfaced in phase detail: {copy['detail']!r}"
+
+
+# ── Wire-and-un-park: the engine-gates workflow is ACTIVE from birth ──
+
+
+def test_engine_gates_workflow_active_and_placeholder_free():
+    """engine-gates.yml (QG+CK on the vendored tools/qa engines) must ship
+    active — it carries only {{BOOTSTRAP_DATE}}, which init always fills —
+    while the stack-conditional workflows stay parked."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        assert _init(t) == 0
+        workflows = [p for p in (t / ".github").rglob("*.yml")]
+        active = {p.name for p in workflows if p.parent == t / hm.WORKFLOWS_DEST}
+        parked = {p.name for p in workflows if p.parent == t / hm.WORKFLOWS_PARKED}
+        assert "engine-gates.yml" in active, f"engine-gates.yml not active: {active}"
+        assert "engine-gates.yml" not in parked, "engine-gates.yml was parked"
+        assert "engine-gates.yml" not in hm.CONFIG_WORKFLOWS, (
+            "engine-gates.yml must not be classified as a config workflow")
+        assert hm.CONFIG_WORKFLOWS <= parked, f"expected {hm.CONFIG_WORKFLOWS} parked"
+        assert not (hm.CONFIG_WORKFLOWS & active), "a config workflow shipped active"
+        text = (t / hm.WORKFLOWS_DEST / "engine-gates.yml").read_text(encoding="utf-8")
+        assert not _PLACEHOLDER.findall(text), "engine-gates.yml shipped a placeholder"
+        assert "2026-01-01" in text, "{{BOOTSTRAP_DATE}} was not filled"
+
+
+def test_bootstrap_parks_engine_gates_no_red_ci():
+    """Bootstrap is copy-only — it never vendors tools/qa/, so engine-gates.yml
+    (which invokes exactly those vendored engines) must be parked there, not
+    active. Shipping it active guarantees a red first CI run ("can't open file
+    tools/qa/quality-gate/quality_gate.py"). Anti-case: NO active workflow in a
+    bootstrapped repo may reference the never-installed tools/qa/ engines."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        rc = main(["bootstrap", "--target", str(t), "--engine-root", str(ENGINE),
+                   "--as-of", "2026-01-01"])
+        assert rc == 0
+        assert not (t / "tools/qa").exists(), "bootstrap must stay copy-only (no vendor)"
+        active = {p.name for p in (t / hm.WORKFLOWS_DEST).glob("*.yml")}
+        parked = {p.name for p in (t / hm.WORKFLOWS_PARKED).glob("*.yml")}
+        assert "engine-gates.yml" not in active, (
+            "bootstrap shipped engine-gates.yml active without vendoring the "
+            "engines it runs — every bootstrapped repo's first push is red CI")
+        assert "engine-gates.yml" in parked, f"engine-gates.yml not parked: {parked}"
+        for wf in sorted((t / hm.WORKFLOWS_DEST).glob("*.yml")):
+            assert "tools/qa/" not in wf.read_text(encoding="utf-8"), (
+                f"active workflow {wf.name} references tools/qa/, which "
+                f"bootstrap never installs")
 
 
 if __name__ == "__main__":
