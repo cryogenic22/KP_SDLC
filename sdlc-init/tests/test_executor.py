@@ -254,6 +254,30 @@ def test_preexisting_user_settings_preserved():
             f"skipped hook wiring not surfaced in phase detail: {copy['detail']!r}"
 
 
+# ── Wire-and-un-park: the engine-gates workflow is ACTIVE from birth ──
+
+
+def test_engine_gates_workflow_active_and_placeholder_free():
+    """engine-gates.yml (QG+CK on the vendored tools/qa engines) must ship
+    active — it carries only {{BOOTSTRAP_DATE}}, which init always fills —
+    while the stack-conditional workflows stay parked."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        assert _init(t) == 0
+        workflows = [p for p in (t / ".github").rglob("*.yml")]
+        active = {p.name for p in workflows if p.parent == t / hm.WORKFLOWS_DEST}
+        parked = {p.name for p in workflows if p.parent == t / hm.WORKFLOWS_PARKED}
+        assert "engine-gates.yml" in active, f"engine-gates.yml not active: {active}"
+        assert "engine-gates.yml" not in parked, "engine-gates.yml was parked"
+        assert "engine-gates.yml" not in hm.CONFIG_WORKFLOWS, (
+            "engine-gates.yml must not be classified as a config workflow")
+        assert hm.CONFIG_WORKFLOWS <= parked, f"expected {hm.CONFIG_WORKFLOWS} parked"
+        assert not (hm.CONFIG_WORKFLOWS & active), "a config workflow shipped active"
+        text = (t / hm.WORKFLOWS_DEST / "engine-gates.yml").read_text(encoding="utf-8")
+        assert not _PLACEHOLDER.findall(text), "engine-gates.yml shipped a placeholder"
+        assert "2026-01-01" in text, "{{BOOTSTRAP_DATE}} was not filled"
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [(n, o) for n, o in sorted(globals().items())

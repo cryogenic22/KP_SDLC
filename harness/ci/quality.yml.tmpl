@@ -1,6 +1,9 @@
 # Quality gate — bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
 # Substitute placeholders: {{PYTHON_PACKAGE}}, {{POSTGRES_USER}}, {{POSTGRES_PASSWORD}}, {{POSTGRES_DB}}.
-# Three layers: mechanical (ruff/mypy/QG/CK/tests) + process (PR template lint) + surface (diff size).
+# Three layers: mechanical (ruff/mypy/tests) + process (PR template lint) + surface (diff size).
+# The vendored QG/CK engine gates run in engine-gates.yml, which is ACTIVE
+# from birth — this workflow gates the stack (uv/ruff/mypy/pytest/Postgres)
+# and stays parked until that stack exists and the placeholders are filled.
 name: quality
 
 on:
@@ -71,19 +74,6 @@ jobs:
 
       - name: Pytest with coverage (unit + integration)
         run: uv run pytest --cov={{PYTHON_PACKAGE}} --cov-report=xml --cov-report=term --cov-fail-under=80
-
-      - name: Quality Gate (PRS ≥ 85, hard block)
-        run: python tools/qa/quality-gate/quality_gate.py --config .quality-gate.json {{PYTHON_PACKAGE}} tests .github/scripts --json --sarif qg.sarif
-
-      - name: Cathedral Keeper (architecture)
-        run: python tools/qa/cathedral-keeper/ck.py analyze --root . --blast-radius
-
-      - name: Upload SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: qg.sarif
-        continue-on-error: true
 
   process:
     name: Process guardrails

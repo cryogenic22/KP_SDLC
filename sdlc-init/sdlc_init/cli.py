@@ -90,7 +90,8 @@ def cmd_init(args) -> int:
         return 2
     print(f"[sdlc init] {name}  owner={owner}  target={ctx.target}"
           + ("  (dry-run)" if args.dry_run else ""))
-    run(ctx, [ph.copy_harness, ph.park_readme, ph.setup_floor, ph.write_manifest])
+    run(ctx, [ph.copy_harness, ph.park_readme, ph.vendor_engine, ph.setup_floor,
+              ph.born_gated_proof, ph.write_manifest])
     failed = [r for r in ctx.results if r.status == "fail"]
     if failed:
         print(f"[sdlc init] FAILED: {', '.join(r.name for r in failed)}", file=sys.stderr)

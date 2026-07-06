@@ -39,6 +39,9 @@ class InitContext:
     dry_run: bool
     log: Callable[[str], None]
     results: list[PhaseResult] = field(default_factory=list)
+    # Per-file sha256 of the vendored engine (dest rel-path -> digest),
+    # filled by vendor_engine and recorded by write_manifest.
+    vendor_hashes: dict[str, str] = field(default_factory=dict)
 
     @property
     def target(self) -> Path:

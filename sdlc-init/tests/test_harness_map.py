@@ -50,6 +50,31 @@ def test_every_placeholder_carrying_workflow_is_parked():
             )
 
 
+def test_engine_vendor_map_sources_exist():
+    """Vendor-map drift guard (mirrors test_file_map_sources_exist): every
+    vendor source must exist under the ENGINE ROOT — note these are relative
+    to the engine checkout, not to harness/."""
+    engine = HARNESS.parent
+    missing = [src for src, _ in hm.ENGINE_VENDOR_MAP if not (engine / src).is_file()]
+    missing += [src for src, _ in hm.ENGINE_VENDOR_DIRS if not (engine / src).is_dir()]
+    assert not missing, f"vendor map names non-existent engine sources: {missing}"
+
+
+def test_engine_gates_tmpl_single_sources_gate_commands():
+    """The engine-gates workflow and the born_gated_proof phase must run the
+    IDENTICAL command lines — both consume the harness_map constants, so the
+    local proof and the CI gate cannot drift apart."""
+    tmpl = (HARNESS / "ci" / "engine-gates.yml.tmpl").read_text(encoding="utf-8")
+    assert f"run: {hm.QG_GATE_CMD}" in tmpl, (
+        "engine-gates.yml.tmpl QG step does not match harness_map.QG_GATE_CMD")
+    assert f"run: {hm.CK_GATE_CMD}" in tmpl, (
+        "engine-gates.yml.tmpl CK step does not match harness_map.CK_GATE_CMD")
+    # The vendored QG defaults its root to tools/qa (script_dir.parent), which
+    # mis-anchors excludes and root-config discovery — '--root .' is mandatory.
+    assert "--root ." in hm.QG_GATE_CMD, "QG gate command lost the '--root .' anchor"
+    assert "--config .quality-gate.json" in hm.QG_GATE_CMD
+
+
 def test_skills_source_exists():
     assert (HARNESS / hm.SKILLS_SRC).is_dir()
 

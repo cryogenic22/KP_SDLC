@@ -9,10 +9,13 @@ installed, and each phase outcome — the read surface for a future
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from .harness_map import ENGINE_VENDOR_DEST
 
 SCHEMA = "sdlc-init/manifest@1"
 SDLC_INIT_VERSION = "0.1.0"
@@ -32,8 +35,12 @@ class InitManifest:
             raise ValueError("project_name is required")
         if not self.owner.strip():
             raise ValueError("owner is required (e.g. @user or @org/team)")
-        if not (self.engine_root / "harness").is_dir():
-            raise ValueError(f"engine_root has no harness/ dir: {self.engine_root}")
+        # Vendoring the QG+CK engines is a core phase, so a usable engine
+        # root must carry all three components — not just harness/.
+        for component in ("harness", "quality-gate", "cathedral-keeper"):
+            if not (self.engine_root / component).is_dir():
+                raise ValueError(
+                    f"engine_root has no {component}/ dir: {self.engine_root}")
 
 
 def engine_sha(engine_root: Path) -> str:
@@ -60,7 +67,31 @@ def engine_version(engine_root: Path) -> str:
     return "unknown"
 
 
-def build_repo_manifest(m: InitManifest, as_of: str, phase_results: list[dict]) -> dict:
+def vendored_record(hashes: dict[str, str]) -> dict:
+    """The engine.vendored manifest block: the read surface for `sdlc status`
+    / `sdlc update` drift detection. The aggregate sha256 digests the sorted
+    per-file digests, so any single-file tamper changes it."""
+    ordered = sorted(hashes.items())
+    aggregate = hashlib.sha256(
+        "".join(f"{rel}:{digest}\n" for rel, digest in ordered).encode("utf-8")
+    ).hexdigest()
+    return {
+        "path": ENGINE_VENDOR_DEST,
+        "file_count": len(hashes),
+        "sha256": aggregate,
+        "files": dict(ordered),
+    }
+
+
+def build_repo_manifest(m: InitManifest, as_of: str, phase_results: list[dict],
+                        vendor_hashes: dict[str, str] | None = None) -> dict:
+    engine: dict = {
+        "source": m.engine_root.as_posix(),  # portable in a committed file
+        "sha": engine_sha(m.engine_root),
+        "version": engine_version(m.engine_root),
+    }
+    if vendor_hashes:
+        engine["vendored"] = vendored_record(vendor_hashes)
     return {
         "schema": SCHEMA,
         "sdlc_init_version": SDLC_INIT_VERSION,
@@ -70,11 +101,7 @@ def build_repo_manifest(m: InitManifest, as_of: str, phase_results: list[dict]) 
         "owner": m.owner,
         "profile": m.profile,
         "created": as_of,
-        "engine": {
-            "source": m.engine_root.as_posix(),  # portable in a committed file
-            "sha": engine_sha(m.engine_root),
-            "version": engine_version(m.engine_root),
-        },
+        "engine": engine,
         "phases": phase_results,
     }
 

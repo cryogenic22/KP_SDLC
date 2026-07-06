@@ -28,6 +28,8 @@ FILE_MAP: list[tuple[str, str]] = [
     ("structural-floor/gen_codeowners.py", "scripts/gen_codeowners.py"),
     ("structural-floor/protected-surface.txt.tmpl", "protected-surface.txt"),
     ("structural-floor/test_protected_surface_sync.py.tmpl", "tests/test_protected_surface_sync.py"),
+    ("templates/quality-gate.json.tmpl", ".quality-gate.json"),
+    ("templates/cathedral-keeper.json.tmpl", ".cathedral-keeper.json"),
 ]
 
 # Directory fan-outs: (source dir relative to harness/, dest dir in repo).
@@ -52,7 +54,54 @@ GATING_FILES: list[str] = [
     "AGENTS.md",
     "protected-surface.txt",
     ".github/CODEOWNERS",
+    ".quality-gate.json",
 ]
+
+# ── Engine vendoring (D1: vendored pinned copy) ──────────────────────
+# Sources below are relative to the ENGINE ROOT (the KP_SDLC checkout), NOT
+# to harness/ like FILE_MAP — the QG/CK engines live beside harness/, so they
+# get their own constants rather than overloading FILE_MAP semantics.
+# Vendored files are BYTE-copied (no substitution, no newline translation):
+# the per-file sha256 recorded in .harness/manifest.json is only meaningful
+# if the copy is byte-identical to the pinned engine source.
+ENGINE_VENDOR_DEST = "tools/qa"
+
+ENGINE_VENDOR_MAP: list[tuple[str, str]] = [
+    ("quality-gate/quality_gate.py",
+     "tools/qa/quality-gate/quality_gate.py"),
+    ("quality-gate/quality-gate.config.json",
+     "tools/qa/quality-gate/quality-gate.config.json"),
+    ("cathedral-keeper/ck.py",
+     "tools/qa/cathedral-keeper/ck.py"),
+    ("cathedral-keeper/cathedral-keeper.config.json",
+     "tools/qa/cathedral-keeper/cathedral-keeper.config.json"),
+]
+
+# Directory fan-outs, filtered: only VENDOR_INCLUDE_SUFFIXES files, pruning
+# VENDOR_PRUNE_DIRS. The filter is load-bearing — a wholesale copy would ship
+# __pycache__/, test trees, and the stray 0-byte Windows-reserved 'nul' file.
+ENGINE_VENDOR_DIRS: list[tuple[str, str]] = [
+    ("quality-gate/qg", "tools/qa/quality-gate/qg"),
+    ("cathedral-keeper/cathedral_keeper", "tools/qa/cathedral-keeper/cathedral_keeper"),
+]
+VENDOR_INCLUDE_SUFFIXES: tuple[str, ...] = (".py", ".json")
+VENDOR_PRUNE_DIRS: frozenset[str] = frozenset({"__pycache__", "tests"})
+
+# Engine-gate command lines, single-sourced: harness/ci/engine-gates.yml.tmpl
+# carries exactly these strings (a sync test enforces it) and born_gated_proof
+# runs the same argv, so the local proof and the CI gate cannot drift.
+# '--root .' is REQUIRED: the vendored QG defaults its root to tools/qa
+# (script_dir.parent), which mis-anchors excludes and root-config discovery.
+QG_GATE_ARGS: list[str] = [
+    "tools/qa/quality-gate/quality_gate.py",
+    "--root", ".", "--config", ".quality-gate.json", "--json",
+]
+QG_GATE_CMD: str = "python " + " ".join(QG_GATE_ARGS) + " --sarif qg.sarif"
+CK_GATE_ARGS: list[str] = [
+    "tools/qa/cathedral-keeper/ck.py",
+    "analyze", "--root", ".", "--blast-radius",
+]
+CK_GATE_CMD: str = "python " + " ".join(CK_GATE_ARGS)
 
 # Workflows that carry config placeholders no generic init can fill (they gate
 # a stack that does not exist yet). They are copied to workflows-parked/ instead

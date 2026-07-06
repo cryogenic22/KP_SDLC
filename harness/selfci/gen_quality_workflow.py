@@ -12,8 +12,11 @@ this generator assembles the engine's own workflow from the same tmpl:
 - ``process`` job: the tmpl's process job with the vendor script path
   (.github/scripts/check_pr_template.py) rewired to the engine path
   (harness/process/check_pr_template.py);
-- ``mechanical`` job: engine-specific, pinned by ENGINE_PROFILE below;
-  its SARIF-upload step is extracted from the tmpl verbatim.
+- ``mechanical`` job: engine-specific, pinned by ENGINE_PROFILE below.
+  Its SARIF-upload step is the _SARIF_STEP constant: the tmpl's mechanical
+  job no longer carries QG/CK/SARIF steps (those moved to
+  harness/ci/engine-gates.yml.tmpl, active from birth in init'd repos),
+  but the engine's own QG step still emits qg.sarif.
 
 The rendered file is committed; drift fails CI twice over (the workflow's own
 first step runs ``--check``, and test_quality_workflow_sync.py enforces the
@@ -146,21 +149,18 @@ def extract_preamble(tmpl_text: str) -> str:
     return block
 
 
-def extract_sarif_upload(tmpl_text: str) -> str:
-    """Extract the tmpl mechanical job's SARIF-upload step, verbatim."""
-    mech = extract_job(tmpl_text, "mechanical")
-    marker = "      - name: Upload SARIF"
-    idx = mech.find(marker)
-    if idx == -1:
-        raise ValueError("tmpl mechanical job has no 'Upload SARIF' step")
-    block = mech[idx:].rstrip("\n")
-    if "github/codeql-action/upload-sarif@v3" not in block:
-        raise ValueError("tmpl SARIF step no longer uses upload-sarif@v3 — re-check slice")
-    if "continue-on-error: true" not in block:
-        raise ValueError(
-            "tmpl SARIF step lost continue-on-error — a SARIF-service outage would block"
-        )
-    return block
+# The engine mechanical job's SARIF-upload step. Formerly extracted from the
+# tmpl's mechanical job; that job no longer runs QG (engine-gates.yml.tmpl
+# owns the vendored QG/CK/SARIF steps for init'd repos), so the engine's copy
+# lives here, next to the QG_CMD that produces qg.sarif.
+_SARIF_STEP = (
+    "      - name: Upload SARIF\n"
+    "        if: always()\n"
+    "        uses: github/codeql-action/upload-sarif@v3\n"
+    "        with:\n"
+    "          sarif_file: qg.sarif\n"
+    "        continue-on-error: true"
+)
 
 
 def _ck_step(profile: Mapping) -> str:
@@ -182,7 +182,7 @@ def _ck_step(profile: Mapping) -> str:
     )
 
 
-def _engine_steps(tmpl_text: str, profile: Mapping) -> List[str]:
+def _engine_steps(profile: Mapping) -> List[str]:
     """The engine mechanical job's steps, in run order."""
     return [
         (
@@ -219,19 +219,19 @@ def _engine_steps(tmpl_text: str, profile: Mapping) -> List[str]:
             "            ck-report.json\n"
             "        continue-on-error: true"
         ),
-        extract_sarif_upload(tmpl_text),
+        _SARIF_STEP,
     ]
 
 
-def build_mechanical(tmpl_text: str, profile: Mapping) -> str:
-    """Assemble the engine's mechanical job from ENGINE_PROFILE + tmpl slices."""
+def build_mechanical(profile: Mapping) -> str:
+    """Assemble the engine's mechanical job from ENGINE_PROFILE."""
     header = (
         "  mechanical:\n"
         "    name: Mechanical guardrails\n"
         "    runs-on: ubuntu-latest\n"
         "    steps:\n"
     )
-    return header + "\n\n".join(_engine_steps(tmpl_text, profile))
+    return header + "\n\n".join(_engine_steps(profile))
 
 
 def build_process(tmpl_text: str) -> str:
@@ -253,7 +253,7 @@ def build_process(tmpl_text: str) -> str:
 def render(tmpl_text: str, profile: Optional[Mapping] = None) -> str:
     """Render the engine workflow (LF-only) from tmpl text + profile."""
     profile = ENGINE_PROFILE if profile is None else profile
-    jobs = [build_mechanical(tmpl_text, profile)]
+    jobs = [build_mechanical(profile)]
     if profile["INCLUDE_PROCESS"]:
         jobs.append(build_process(tmpl_text))
     jobs.append(extract_job(tmpl_text, "surface"))

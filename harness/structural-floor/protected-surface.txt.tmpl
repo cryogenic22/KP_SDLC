@@ -18,8 +18,13 @@
 # — Quality Gate config (the bar: rules, PRS weights, thresholds)
 .quality-gate.json
 
-# — Cathedral Keeper config (enabled policies, severities) — uncomment once configured
-# .cathedral-keeper.json
+# — Cathedral Keeper config (enabled policies, severities, QG wiring)
+.cathedral-keeper.json
+
+# — The vendored QG+CK engines themselves: read-only by convention, and any
+#   edit (which could weaken the gates) requires the owner's review. Drift
+#   detection against the manifest's per-file sha256 record is `sdlc status`.
+tools/qa/
 
 # — CI gate definitions
 .github/workflows/
