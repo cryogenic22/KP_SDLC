@@ -5,6 +5,9 @@
 
 quality-gate/quality-gate.config.json @cryogenic22
 quality-gate/quality_gate.py @cryogenic22
+.quality-gate.baseline.json @cryogenic22
+.quality-gate.json @cryogenic22
+quality-gate.config.json @cryogenic22
 cathedral-keeper/cathedral-keeper.config.json @cryogenic22
 protected-surface.txt @cryogenic22
 .github/CODEOWNERS @cryogenic22

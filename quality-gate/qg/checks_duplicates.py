@@ -71,6 +71,7 @@ def check_duplicate_helpers(
             continue
         if len({loc[0] for loc in locations}) <= 1:
             continue
+        locations = _stable_order(locations)
         first_file, first_line, first_name = locations[0]
         also_in = ", ".join(loc[0].name for loc in locations[1:4])
         add_issue_for_path(first_file)(
@@ -80,6 +81,24 @@ def check_duplicate_helpers(
             message=f"Function '{first_name}' appears duplicated across files.",
             suggestion="Extract to shared utility. Also in: " + also_in,
         )
+
+
+def _stable_order(
+    locations: list[tuple[Path, int, str]],
+) -> list[tuple[Path, int, str]]:
+    """Scan-order-independent ordering for a duplicate group.
+
+    The shared warning lands on the first location, and per-file warning
+    counts are load-bearing for the baseline ratchet (E0.4): if the
+    carrier file flapped with scan order, checking [x,y] vs [y,x] could
+    fabricate a false 'baseline_ratchet' regression or mask a real one
+    behind the vacated headroom. Sorting on the forward-slash-normalized
+    path pins the carrier across scan orders and platforms.
+    """
+    return sorted(
+        locations,
+        key=lambda loc: (str(loc[0]).replace("\\", "/"), int(loc[1]), str(loc[2])),
+    )
 
 
 def _collect_function_sigs(
