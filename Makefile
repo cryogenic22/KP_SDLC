@@ -10,9 +10,9 @@ ROOT     := $(shell pwd)
 
 # ── Test targets ─────────────────────────────────────────────────────
 
-.PHONY: test test-qg test-ck test-reporting test-init report sarif clean help
+.PHONY: test test-qg test-ck test-reporting test-init test-harness report sarif clean help
 
-test: test-qg test-ck test-reporting test-init ## Run all test suites
+test: test-qg test-ck test-reporting test-init test-harness ## Run all test suites
 	@echo ""
 	@echo "All test suites completed."
 
@@ -72,6 +72,20 @@ test-init: ## Run sdlc-init tests
 	echo "sdlc-init: $$passed passed, $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
+test-harness: ## Run harness tests (structural-floor, process, selfci)
+	@echo "=== Harness Tests ==="
+	@passed=0; failed=0; \
+	for f in harness/structural-floor/tests/test_*.py harness/process/tests/test_*.py harness/selfci/tests/test_*.py; do \
+		if python "$$f"; then \
+			passed=$$((passed + 1)); \
+		else \
+			failed=$$((failed + 1)); \
+		fi; \
+	done; \
+	echo ""; \
+	echo "Harness: $$passed passed, $$failed failed"; \
+	[ "$$failed" -eq 0 ]
+
 # ── Analysis targets ─────────────────────────────────────────────────
 
 report: ## Run QG + CK and generate HTML report
@@ -79,8 +93,9 @@ report: ## Run QG + CK and generate HTML report
 	python $(CK_DIR)/ck.py analyze --root $(ROOT) --blast-radius --verbose
 	python $(RPT_DIR)/generate_html_reports.py --root $(ROOT) --title "Quality Report"
 
-sarif: ## Run QG and output SARIF
-	python $(QG_DIR)/quality_gate.py --root $(ROOT) --sarif
+sarif: ## Run QG (audit) and output SARIF
+	@mkdir -p .quality-reports
+	python $(QG_DIR)/quality_gate.py --root $(ROOT) --mode audit --sarif .quality-reports/qg.sarif
 
 # ── Utility targets ──────────────────────────────────────────────────
 

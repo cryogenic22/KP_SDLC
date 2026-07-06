@@ -39,6 +39,12 @@ harness/structural-floor/gen_codeowners.py
 # — CI gate definitions (forward-looking: protects workflows once added)
 .github/workflows/
 
+# — Self-CI single source: the tmpl the engine's quality workflow is rendered
+#   from and the generator (+ ENGINE_PROFILE) that renders it. Tampering with
+#   either silently redefines what the engine's own CI enforces.
+harness/ci/quality.yml.tmpl
+harness/selfci/gen_quality_workflow.py
+
 # — Agent-session machinery: the hooks that run on every session and the
 #   conventions every session follows (incl. the ctxpack memory ledger wiring).
 #   Tampering here could silently disable the receipts layer.

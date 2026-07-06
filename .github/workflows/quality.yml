@@ -1,0 +1,142 @@
+# DO NOT EDIT — generated from harness/ci/quality.yml.tmpl by
+# harness/selfci/gen_quality_workflow.py (ENGINE_PROFILE pins the engine-repo
+# mechanical job). Edit the tmpl or the profile, then regenerate:
+#   python harness/selfci/gen_quality_workflow.py
+# CI fails on drift: this workflow's first mechanical step re-runs the
+# generator with --check, and harness/selfci/tests/test_quality_workflow_sync.py
+# enforces the same equality.
+# Note: the surface job posts a PR comment; fork PRs run with a read-only
+# token so that step can fail on forks (acceptable for a single-owner repo).
+
+name: quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mechanical:
+    name: Mechanical guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: quality.yml in sync with quality.yml.tmpl + ENGINE_PROFILE
+        run: python harness/selfci/gen_quality_workflow.py --check
+
+      - name: Test suites (blocking)
+        run: make test
+
+      - name: Quality Gate (report-only until E0.6 baseline)
+        run: python quality-gate/quality_gate.py --root . --mode audit --json --sarif qg.sarif
+
+      # report-only until E0.4/E0.6 land a green path: CK exits 1 on
+      # >=high findings (236 on 2026-07-06) and is silent without
+      # --verbose. This is the workflow's ONLY masked step; flip
+      # ENGINE_PROFILE["CK_BLOCKING"] to True (drops continue-on-error)
+      # once the >=high findings are baselined or cleared.
+      - name: Cathedral Keeper (architecture, report-only)
+        run: python cathedral-keeper/ck.py analyze --root . --blast-radius --verbose --out-md ck-report.md --out-json ck-report.json
+        continue-on-error: true
+
+      - name: Upload CK reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ck-reports
+          path: |
+            ck-report.md
+            ck-report.json
+        continue-on-error: true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: qg.sarif
+        continue-on-error: true
+
+  process:
+    name: Process guardrails
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: PR template lint
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python harness/process/check_pr_template.py
+
+  surface:
+    name: Reviewer surfaces (non-blocking)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute diff size
+        id: diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          ADDED=$(git diff --shortstat "$BASE_SHA"...HEAD | awk '{print $4}')
+          DELETED=$(git diff --shortstat "$BASE_SHA"...HEAD | awk '{print $6}')
+          FILES=$(git diff --name-only "$BASE_SHA"...HEAD | wc -l)
+          echo "added=${ADDED:-0}" >> "$GITHUB_OUTPUT"
+          echo "deleted=${DELETED:-0}" >> "$GITHUB_OUTPUT"
+          echo "files=${FILES:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Post diff-size summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const added   = `${{ steps.diff.outputs.added }}`;
+            const deleted = `${{ steps.diff.outputs.deleted }}`;
+            const files   = `${{ steps.diff.outputs.files }}`;
+            const total   = (parseInt(added)||0) + (parseInt(deleted)||0);
+            const sizeFlag = total > 500
+              ? '⚠️ **Diff > 500 LOC** — review against the cited spec scope (Karpathy: surgical changes).'
+              : '✅ Diff size within typical bounds.';
+            const body = [
+              '### Reviewer surfaces',
+              '',
+              `**Diff:** ${files} files · +${added} / -${deleted} lines`,
+              '',
+              sizeFlag,
+              '',
+              '_Reviewer surfaces are informational. Mechanical guardrails (ruff/mypy/QG/CK/tests) gate the merge._'
+            ].join('\n');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
