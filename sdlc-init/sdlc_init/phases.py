@@ -150,21 +150,26 @@ def _missing_vendor_sources(engine_root: Path) -> list[str]:
     return missing
 
 
+def _iter_vendor_dir(src_dir: Path, dest_dir_rel: str) -> Iterator[tuple[Path, str]]:
+    """Yield (source, dest_rel) for one vendored directory: code+config
+    files only, pruned of caches/tests (which also sidesteps stray non-code
+    files like 'nul')."""
+    for f in sorted(src_dir.rglob("*")):
+        if not f.is_file() or f.suffix not in hm.VENDOR_INCLUDE_SUFFIXES:
+            continue
+        rel = f.relative_to(src_dir)
+        if hm.VENDOR_PRUNE_DIRS & set(rel.parts):
+            continue
+        yield f, f"{dest_dir_rel}/{rel.as_posix()}"
+
+
 def _iter_vendor_files(engine_root: Path) -> Iterator[tuple[Path, str]]:
     """Yield (source, dest_rel) for every file to vendor: the explicit map,
-    then the directory fan-outs filtered to code+config and pruned of
-    caches/tests (which also sidesteps stray non-code files like 'nul')."""
+    then the directory fan-outs (each walked by _iter_vendor_dir)."""
     for src_rel, dest_rel in hm.ENGINE_VENDOR_MAP:
         yield engine_root / src_rel, dest_rel
     for src_dir_rel, dest_dir_rel in hm.ENGINE_VENDOR_DIRS:
-        src_dir = engine_root / src_dir_rel
-        for f in sorted(src_dir.rglob("*")):
-            if not f.is_file() or f.suffix not in hm.VENDOR_INCLUDE_SUFFIXES:
-                continue
-            rel = f.relative_to(src_dir)
-            if hm.VENDOR_PRUNE_DIRS & set(rel.parts):
-                continue
-            yield f, f"{dest_dir_rel}/{rel.as_posix()}"
+        yield from _iter_vendor_dir(engine_root / src_dir_rel, dest_dir_rel)
 
 
 def vendor_engine(ctx: InitContext) -> PhaseResult:
