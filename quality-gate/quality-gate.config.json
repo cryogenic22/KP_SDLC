@@ -32,6 +32,11 @@
     "_note": "PRS = 100 - (errors*10) - (warnings*2). Files below min_score are blocked."
   },
 
+  "baseline": {
+    "path": ".quality-gate.baseline.json",
+    "_note": "Per-file ratchet (Clean-as-You-Code): write via --mode baseline (refused in CI), commit the diff. Dormant until the file exists; --baseline overrides this path."
+  },
+
   "rules": {
     "file_size": {
       "enabled": true,

@@ -269,6 +269,76 @@ python quality-gate/tools/summarize_audit.py .quality-gate.report.json --top 15
 
 ---
 
+## Baseline & Ratchet (Clean-as-You-Code)
+
+Adopting the gate on an existing (brownfield) codebase usually fails on
+day one: dozens of legacy files sit below the PRS floor, and the team
+either lowers the bar or turns the gate off. The baseline unlocks
+adoption without either: **legacy debt is tolerated, new debt is
+blocked, and every file may only get better.**
+
+```bash
+# 1. Snapshot the current per-file state (run locally, NOT in CI)
+python quality-gate/quality_gate.py --mode baseline
+
+# 2. Commit the generated .quality-gate.baseline.json (it is a reviewable diff)
+
+# 3. Enforce the ratchet in check mode
+python quality-gate/quality_gate.py --mode check --baseline .quality-gate.baseline.json
+```
+
+Ratchet semantics, per scanned file:
+
+| Situation | Outcome |
+|-----------|---------|
+| In baseline, not regressed | Passes — even below the PRS floor (known debt is tolerated) |
+| In baseline, regressed (more errors, more warnings, or lower PRS) | Blocked with ERROR rule `baseline_ratchet` naming the metric (e.g. `errors 2 > baselined 1`) |
+| Not in baseline (new file) | Must meet the normal PRS floor (`prs_score`) |
+| Vetoed (critical/security finding) | Always blocked — a baseline never masks a security veto |
+| In baseline but not scanned | Ignored (safe for diff-scoped CI runs) |
+
+Guarantees:
+
+- **The baseline is never auto-tightened or auto-written.** It changes
+  only via an explicit `--mode baseline` re-run, so every loosening or
+  tightening is a reviewable git diff. `check`/`audit` never write it.
+- **CI cannot regenerate it.** `--mode baseline` refuses to write when a
+  CI environment is detected (`CI`/`GITHUB_ACTIONS`) unless
+  `--allow-ci-baseline` is passed explicitly — and that flag would be
+  visible in any workflow diff, which is owner-review-gated.
+- **Every write is provenance-stamped** (`generated_at`, `commit`,
+  `generated_by`), so any regeneration is attributable.
+- **Fail-closed loading.** A corrupt baseline raises `baseline_unreadable`
+  and an explicitly requested missing one raises `baseline_missing` —
+  the gate never silently runs ratchet-free.
+- **Cross-platform keys.** File keys are forward-slash-normalized on both
+  write and compare, so a baseline written on Windows matches in POSIX CI.
+- The current (review-gated) config always supplies the PRS floor; the
+  `min_score` stored in the baseline is informational only.
+
+Write baselines from **full scans** (the default for `--mode baseline`):
+cross-file checks can under-count on partial scans, so the authoritative
+ratchet run is the full one. Note that the ratchet governs the per-file
+PRS floor; the global `thresholds.error_count` still applies to
+error-severity findings, so brownfield repos typically pair the baseline
+with a per-repo `thresholds` override while errors are burned down.
+
+Config (dormant until the baseline file exists; the `--baseline` flag
+overrides it):
+
+```json
+{
+  "baseline": {
+    "path": ".quality-gate.baseline.json"
+  }
+}
+```
+
+The JSON report (`--json`) gains an additive `baseline` block:
+`{path, status, commit, matched, regressed}`.
+
+---
+
 ## CI/CD Integration
 
 ### GitHub Actions
