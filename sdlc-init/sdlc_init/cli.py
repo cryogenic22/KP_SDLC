@@ -40,7 +40,8 @@ def _prompt(label: str, current: str | None) -> str:
         raise SystemExit(f"error: --{label} is required (no input available)")
 
 
-def _make_context(args, *, dry_run: bool, subs_name: str, subs_owner: str) -> InitContext:
+def _make_context(args, *, dry_run: bool, subs_name: str, subs_owner: str,
+                  parked_workflows: frozenset[str] = hm.CONFIG_WORKFLOWS) -> InitContext:
     engine_root = Path(args.engine_root).resolve()
     target = Path(args.target).resolve()
     target.mkdir(parents=True, exist_ok=True)
@@ -60,6 +61,7 @@ def _make_context(args, *, dry_run: bool, subs_name: str, subs_owner: str) -> In
         subs=hm.substitutions(project_name=subs_name, owner=subs_owner, as_of=as_of),
         dry_run=dry_run,
         log=print,
+        parked_workflows=parked_workflows,
     )
 
 
@@ -107,13 +109,17 @@ def cmd_init(args) -> int:
 def cmd_bootstrap(args) -> int:
     """Copy-only path (bootstrap.sh shim). Leaves {{PROJECT_NAME}}/{{OWNER}} for
     manual fill, matching legacy bootstrap behavior — but still parks config
-    workflows and ships .gitignore (strict improvements)."""
+    workflows and ships .gitignore (strict improvements). Also parks
+    engine-gates.yml: bootstrap never vendors the tools/qa engines it runs,
+    and an active workflow invoking absent engines is guaranteed-red CI."""
     ctx = _make_context(args, dry_run=args.dry_run,
-                        subs_name="{{PROJECT_NAME}}", subs_owner="{{OWNER}}")
+                        subs_name="{{PROJECT_NAME}}", subs_owner="{{OWNER}}",
+                        parked_workflows=hm.BOOTSTRAP_PARKED_WORKFLOWS)
     print(f"[sdlc bootstrap] target={ctx.target}")
     run(ctx, [ph.copy_harness, ph.park_readme])
-    print("[sdlc bootstrap] done. Fill {{PROJECT_NAME}}/{{OWNER}}, or use `sdlc init` "
-          "to do it end-to-end.")
+    print("[sdlc bootstrap] done. Fill {{PROJECT_NAME}}/{{OWNER}}. engine-gates.yml "
+          "is parked (bootstrap does not vendor the tools/qa engines it runs) — "
+          "use `sdlc init` for a born-gated repo end-to-end.")
     return 0
 
 

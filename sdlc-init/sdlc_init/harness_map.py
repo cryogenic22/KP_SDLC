@@ -110,6 +110,14 @@ CK_GATE_CMD: str = "python " + " ".join(CK_GATE_ARGS)
 # destination filename (".tmpl" already stripped).
 CONFIG_WORKFLOWS: frozenset[str] = frozenset({"quality.yml", "eval.yml", "web.yml"})
 
+# `sdlc bootstrap` is copy-only: it never runs vendor_engine, so tools/qa/
+# does not exist in a bootstrapped repo. engine-gates.yml invokes exactly
+# those vendored engines — shipping it active there guarantees a red first
+# CI run ("can't open file tools/qa/quality-gate/quality_gate.py"). Bootstrap
+# therefore parks it on top of the config set; `sdlc init` (which vendors and
+# proves the gate fires) is the only path that ships it active.
+BOOTSTRAP_PARKED_WORKFLOWS: frozenset[str] = CONFIG_WORKFLOWS | {"engine-gates.yml"}
+
 
 def substitutions(*, project_name: str, owner: str, as_of: str) -> dict[str, str]:
     """Placeholder → value map applied to every copied text file. Anything

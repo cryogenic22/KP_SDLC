@@ -143,6 +143,42 @@ def test_target_scan_green_and_engine_excluded():
     assert not self_flagged, f"vendored engine scanned itself: {self_flagged[:5]}"
 
 
+def test_shipped_config_excludes_root_level_artifact_dirs():
+    """The fnmatch anchor gotcha applies to artifact/env dirs too: a
+    '**/node_modules/**' pattern never matches a ROOT-level node_modules/x.py
+    (fnmatch needs a literal '/' before 'node_modules'), so a JS/TS target that
+    runs `npm ci` in CI would have its whole root node_modules scanned by the
+    always-on engine gate — day-1 red CI, defeating green-from-birth. The
+    shipped config must carry the root-anchored twins (node_modules/**, dist/**,
+    ...) beside the '**/'-prefixed forms, exactly as tools/qa/** is anchored."""
+    t = _born_repo()
+    qg = t / "tools/qa/quality-gate/quality_gate.py"
+    artifact_dirs = ["node_modules", "dist", "build", ".next", "coverage", ".venv", "venv"]
+    with tempfile.TemporaryDirectory() as tmp:
+        scan = Path(tmp)
+        shutil.copy(t / ".quality-gate.json", scan / ".quality-gate.json")
+        (scan / "app.py").write_text("x = 1\n", encoding="utf-8")  # clean root file
+        for d in artifact_dirs:
+            pkg = scan / d / "pkg"
+            pkg.mkdir(parents=True)
+            # Known-bad content: if the dir is scanned it trips >=2 errors (exit 1).
+            (pkg / "bad.py").write_text(ph.bad_fixture_source(), encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(qg), "--root", str(scan),
+             "--config", str(scan / ".quality-gate.json"), "--json"],
+            capture_output=True, text=True, cwd=str(scan), env=_NO_BYTECODE_ENV)
+        data = json.loads(proc.stdout)
+        flagged = [i.get("file", "") for i in data.get("issues", [])] + list(data.get("prs", {}))
+        leaked = sorted({f.replace("\\", "/") for f in flagged
+                         if any(f"{d}/" in f.replace("\\", "/") for d in artifact_dirs)})
+        assert not leaked, (
+            "root-level artifact dirs were scanned — the '**/'-prefixed excludes "
+            f"miss root-level paths, needs the anchored twins: {leaked}")
+        assert proc.returncode == 0, (
+            f"born repo not green with root-level artifact dirs present: QG exit "
+            f"{proc.returncode}\n{proc.stdout[-1500:]}")
+
+
 def test_ck_runs_with_shipped_config():
     """CK config-discovery smoke (friction-log row 4): CK runs green with the
     shipped .cathedral-keeper.json, finds the vendored QG, and never flags

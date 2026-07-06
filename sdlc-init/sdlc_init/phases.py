@@ -23,9 +23,12 @@ from .executor import (InitContext, PhaseResult, assert_no_residual_placeholders
 from .manifest import build_repo_manifest, write_repo_manifest
 
 
-def _dest_for_workflow(filename: str) -> str:
-    """Config-carrying workflows go to workflows-parked/; the rest are active."""
-    base = f"{hm.WORKFLOWS_PARKED}" if filename in hm.CONFIG_WORKFLOWS else hm.WORKFLOWS_DEST
+def _dest_for_workflow(ctx: InitContext, filename: str) -> str:
+    """Parked workflows go to workflows-parked/; the rest are active. The
+    parked set rides on the context: init parks the config-carrying trio,
+    bootstrap additionally parks engine-gates.yml (it never vendors the
+    tools/qa engines that workflow runs)."""
+    base = hm.WORKFLOWS_PARKED if filename in ctx.parked_workflows else hm.WORKFLOWS_DEST
     return f"{base}/{filename}"
 
 
@@ -66,7 +69,7 @@ def _install_dirs(ctx: InitContext) -> list[str]:
             continue
         for f in sorted(p for p in src_dir.iterdir() if p.is_file()):
             name = f.name[:-5] if f.name.endswith(".tmpl") else f.name
-            dest_rel = (_dest_for_workflow(name) if src_dir_rel == "ci"
+            dest_rel = (_dest_for_workflow(ctx, name) if src_dir_rel == "ci"
                         else f"{dest_dir_rel}/{name}")
             if install_file(ctx, f, dest_rel):
                 changes.append(dest_rel)
@@ -100,6 +103,20 @@ def copy_harness(ctx: InitContext) -> PhaseResult:
                        detail=detail, changes=changes)
 
 
+def _parked_reason(name: str) -> str:
+    """Per-workflow README line: engine-gates.yml is parked only on the
+    copy-only bootstrap path (its placeholders ARE filled — what is missing
+    is the vendored engine it runs); the rest wait on config placeholders."""
+    if name == "engine-gates.yml":
+        return (f"- `{name}` — parked because this repo was bootstrapped "
+                f"copy-only: the `tools/qa/` engines it runs were never "
+                f"vendored. Vendor them (`sdlc init` does this end-to-end), "
+                f"then move it to `{hm.WORKFLOWS_DEST}/`.")
+    return (f"- `{name}` — fill its placeholders, move to `{hm.WORKFLOWS_DEST}/`, "
+            f"and add a deliberately failing fixture in the activating PR to prove "
+            f"it fires.")
+
+
 def park_readme(ctx: InitContext) -> PhaseResult:
     """Explain why parked workflows are parked (idempotent)."""
     parked_dir = ctx.target / hm.WORKFLOWS_PARKED
@@ -116,9 +133,7 @@ def park_readme(ctx: InitContext) -> PhaseResult:
         "gate exists — raw `{{PLACEHOLDER}}` values are invalid workflow YAML,",
         "and a gate that runs against nothing is vacuous green.",
         "",
-        *[f"- `{name}` — fill its placeholders, move to `{hm.WORKFLOWS_DEST}/`, "
-          f"and add a deliberately failing fixture in the activating PR to prove "
-          f"it fires." for name in parked],
+        *[_parked_reason(name) for name in parked],
         "",
     ]
     readme.write_text("\n".join(lines), encoding="utf-8")

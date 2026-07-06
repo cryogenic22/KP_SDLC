@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from . import harness_map as hm
 from .manifest import InitManifest
 
 _PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
@@ -42,6 +43,11 @@ class InitContext:
     # Per-file sha256 of the vendored engine (dest rel-path -> digest),
     # filled by vendor_engine and recorded by write_manifest.
     vendor_hashes: dict[str, str] = field(default_factory=dict)
+    # Workflow filenames routed to workflows-parked/ instead of workflows/.
+    # init parks only the config-carrying set; bootstrap (copy-only, never
+    # vendors) additionally parks engine-gates.yml — an active workflow that
+    # invokes engines that were never installed is guaranteed-red CI.
+    parked_workflows: frozenset[str] = hm.CONFIG_WORKFLOWS
 
     @property
     def target(self) -> Path:

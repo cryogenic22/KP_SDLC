@@ -55,7 +55,10 @@ stack exists.
 
 - `sdlc init …` — the full born-gated setup (installed entry point).
 - `sdlc bootstrap --target DIR` — copy-only path the `bootstrap.sh` shim calls
-  (placeholders left for manual fill; backward compatibility).
+  (placeholders left for manual fill; backward compatibility). It never
+  vendors `tools/qa/`, so it parks `engine-gates.yml` alongside the config
+  workflows — an active workflow invoking engines that were never installed
+  would be red CI from the first push. Only `sdlc init` activates it.
 - `bash harness/bootstrap.sh [DIR]` — thin shim over `sdlc bootstrap`.
 
 ## Not yet (deferred, tracked in the execution plan)
