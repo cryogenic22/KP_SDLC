@@ -79,6 +79,8 @@ target-project/
 │       └── before-i-commit.md                      /before-i-commit
 ├── .github/
 │   ├── PULL_REQUEST_TEMPLATE.md                    Spec/Summary/Verification/Self-review
+│   ├── scripts/
+│   │   └── check_pr_template.py                    PR template lint (quality.yml process job)
 │   └── workflows/
 │       ├── quality.yml                             ruff/mypy/pytest/QG/CK + PR template lint + diff size
 │       ├── web.yml                                 pnpm typecheck/lint/test/build/size

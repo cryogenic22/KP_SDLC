@@ -24,6 +24,7 @@ FILE_MAP: list[tuple[str, str]] = [
     ("hooks/red-flag-attestation.sh", ".harness/hooks/red-flag-attestation.sh"),
     ("hooks/second_pass_reviewer.py", ".harness/hooks/second_pass_reviewer.py"),
     ("hooks/reuse_injector.py", ".harness/hooks/reuse_injector.py"),
+    ("process/check_pr_template.py", ".github/scripts/check_pr_template.py"),
     ("structural-floor/gen_codeowners.py", "scripts/gen_codeowners.py"),
     ("structural-floor/protected-surface.txt.tmpl", "protected-surface.txt"),
     ("structural-floor/test_protected_surface_sync.py.tmpl", "tests/test_protected_surface_sync.py"),

@@ -118,6 +118,11 @@ try:  # PRS veto engine
 except ImportError:  # pragma: no cover
     HAS_PRS_VETO = False
 
+try:  # Baseline & ratchet (Clean-as-You-Code) — logic lives in qg/baseline.py
+    from qg import baseline as qg_baseline
+except ImportError:  # pragma: no cover
+    qg_baseline = None  # type: ignore[assignment]
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -235,6 +240,7 @@ class QualityGate:
         root_dir: str | None = None,
         *,
         quiet: bool = False,
+        baseline: str | None = None,
     ):
         script_dir = Path(__file__).resolve().parent
         default_root = script_dir.parent  # <repo>/quality-gate/quality_gate.py -> <repo>/
@@ -248,6 +254,12 @@ class QualityGate:
         self.issues: list[Issue] = []
         self.stats = defaultdict(int)
         self.file_prs: dict[str, dict[str, Any]] = {}
+        if qg_baseline is not None:
+            (self.baseline_path, self._baseline_explicit, self._baseline_data,
+             self._baseline_status) = qg_baseline.init_state(baseline, self.config, self.root_dir)
+        else:  # pragma: no cover — qg/ ships with the engine
+            self.baseline_path, self._baseline_explicit = baseline, bool(baseline)
+            self._baseline_data, self._baseline_status = None, "missing"
 
     def _load_config(self, config_path: str | None) -> dict:
         """Load configuration from file or use defaults."""
@@ -1150,6 +1162,7 @@ class QualityGate:
                 elif issue.severity == Severity.WARNING:
                     counts[issue.file]["warnings"] += 1
 
+            ratchet = qg_baseline is not None and self._baseline_data is not None
             prs_failed = 0
             for file_path in files:
                 rel = os.path.relpath(str(file_path), str(self.root_dir))
@@ -1180,7 +1193,7 @@ class QualityGate:
                     "warnings": int(c["warnings"]),
                     "vetoed": vetoed,
                 }
-                if vetoed or score < float(min_score):
+                if not ratchet and (vetoed or score < float(min_score)):
                     prs_failed += 1
                     label = f"PRS VETOED (critical/security finding)" if vetoed else f"PRS {score:.1f}/100 below minimum {min_score}."
                     self._add_issue(
@@ -1192,9 +1205,14 @@ class QualityGate:
                         suggestion="Fix critical/security findings first." if vetoed else "Fix errors/warnings in this file; split large functions/files; remove debug/todos; improve error handling.",
                     )
 
+            if ratchet:
+                prs_failed = self._apply_baseline_ratchet(min_score)
+
             self.stats["prs_files_scored"] = len(self.file_prs)
             self.stats["prs_files_failed"] = prs_failed
             self.stats["prs_min_score"] = min_score
+
+        self._flag_baseline_load_failure()
 
         # Compile results
         thresholds = self.config.get("thresholds", {})
@@ -1209,6 +1227,25 @@ class QualityGate:
             issues=self.issues,
             stats=dict(self.stats)
         )
+
+    def _apply_baseline_ratchet(self, min_score: int) -> int:
+        """Thin call site — ratchet semantics live in qg/baseline.py (E0.4)."""
+        outcome = qg_baseline.apply_ratchet(self.file_prs, self._baseline_data, min_score)
+        for item in outcome["issues"]:
+            self._add_issue(file=str(self.root_dir / item.pop("file")), **item)
+        for key, value in outcome["stats"].items():
+            self.stats[key] = value
+        return int(outcome["failed"])
+
+    def _flag_baseline_load_failure(self) -> None:
+        """Fail closed when a requested baseline is missing or corrupt (E0.4)."""
+        if qg_baseline is None or not self.baseline_path:
+            return
+        item = qg_baseline.load_failure_issue(
+            self.baseline_path, self._baseline_status, explicit=self._baseline_explicit,
+        )
+        if item:
+            self._add_issue(**item)
 
     def print_report(self, result: CheckResult, verbose: bool = False) -> None:
         """Print human-readable report."""
@@ -1307,6 +1344,11 @@ class QualityGate:
             ]
         }
 
+        if qg_baseline is not None and self.baseline_path:
+            report["baseline"] = qg_baseline.report_block(
+                self.baseline_path, self._baseline_status, self._baseline_data, result.stats,
+            )
+
         if include_autofixes:
             report["autofixes"] = self.generate_autofixes(result)
 
@@ -1317,6 +1359,36 @@ class QualityGate:
 # CLI INTERFACE
 # ============================================================================
 
+def _run_baseline_mode(gate: "QualityGate", *, allow_ci: bool) -> int:
+    """--mode baseline: full scan -> build -> write (logic in qg/baseline.py).
+
+    Baselines are written from full scans only — the authoritative ratchet
+    run is the full one (diff-scoped scans can under-count cross-file rules).
+    """
+    if qg_baseline is None:  # pragma: no cover — qg/ ships with the engine
+        print("[QualityGate] Baseline mode unavailable: qg/baseline.py not importable.")
+        return 1
+    refusal = qg_baseline.ci_refusal(allow_ci=allow_ci)
+    if refusal:
+        print(f"[QualityGate] {refusal}")
+        return 1
+    result = gate.run()  # full scan: no paths, not staged
+    if not gate.file_prs:
+        print("[QualityGate] Refusing to write baseline: no files were scored "
+              "(an empty baseline would be vacuous).")
+        return 1
+    data = qg_baseline.build_baseline(
+        gate.file_prs,
+        root=gate.root_dir,
+        min_score=int(result.stats.get("prs_min_score", 85)),
+        git_root=gate.git_root,
+    )
+    path = gate.baseline_path or str(gate.root_dir / qg_baseline.DEFAULT_BASELINE_FILENAME)
+    ok, message = qg_baseline.write_baseline(path, data, allow_ci=allow_ci)
+    print(f"[QualityGate] {message}")
+    return 0 if ok else 1
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Quality Gate - Portable Code Quality Enforcement",
@@ -1326,7 +1398,8 @@ def main():
     parser.add_argument('paths', nargs='*', help='Specific files or directories to check')
     parser.add_argument('--paths-from', help='Read newline-delimited paths from this file')
     parser.add_argument('--staged', action='store_true', help='Check staged files only (for pre-commit)')
-    parser.add_argument('--mode', choices=['check', 'audit'], default='check', help='check=enforce, audit=report only')
+    parser.add_argument('--mode', choices=['check', 'audit', 'baseline'], default='check',
+                        help='check=enforce, audit=report only, baseline=write the per-file ratchet baseline (refused in CI)')
     parser.add_argument('--top', type=int, default=0, help='In audit mode, print lowest PRS files (default: 0)')
     parser.add_argument('--strict', action='store_true', help='Fail on warnings too')
     parser.add_argument('--config', help='Path to config file')
@@ -1338,14 +1411,24 @@ def main():
     parser.add_argument('--min-score', type=int, default=None, help='Override PRS minimum score (default: 85)')
     parser.add_argument('--sarif', help='Write SARIF 2.1.0 output to this path')
     parser.add_argument('--autofix', action='store_true', help='Include auto-fix diffs in JSON output')
+    parser.add_argument('--baseline', default=None,
+                        help='Baseline file: ratchet source for check/audit, write target for '
+                             '--mode baseline (default: baseline.path config key, else '
+                             '.quality-gate.baseline.json at the project root)')
+    parser.add_argument('--allow-ci-baseline', action='store_true',
+                        help='Explicit escape hatch: allow --mode baseline to write under a CI environment')
 
     args = parser.parse_args()
 
-    gate = QualityGate(config_path=args.config, root_dir=args.root, quiet=bool(args.json))
+    gate = QualityGate(config_path=args.config, root_dir=args.root, quiet=bool(args.json),
+                       baseline=args.baseline)
     if args.no_prs:
         gate.config.setdefault("prs", {})["enabled"] = False
     if args.min_score is not None:
         gate.config.setdefault("prs", {})["min_score"] = int(args.min_score)
+
+    if args.mode == 'baseline':
+        sys.exit(_run_baseline_mode(gate, allow_ci=args.allow_ci_baseline))
 
     paths: list[str] = list(args.paths or [])
     if args.paths_from:
