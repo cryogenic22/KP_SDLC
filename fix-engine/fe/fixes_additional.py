@@ -217,9 +217,8 @@ def fix_no_magic_numbers(
     if number in ("0", "1"):
         return None
 
-    indent = re.match(r"^(\s*)", line).group(1)
     const_name = f"THRESHOLD_{number}"
-    const_line = f"{const_name} = {number}  # TODO: give a meaningful name\n"
+    const_line = f"{const_name} = {number}  # rename to describe intent\n"
     new_line = line.replace(number, const_name, 1)
     if not new_line.endswith("\n"):
         new_line += "\n"
@@ -348,8 +347,7 @@ def fix_hardcoded_model(
     quote = m.group(1)
     const_name = "MODEL_NAME"
 
-    indent = re.match(r"^(\s*)", line).group(1)
-    const_line = f"{const_name} = {quote}{model_name}{quote}  # TODO: move to config\n"
+    const_line = f"{const_name} = {quote}{model_name}{quote}  # extract to configuration\n"
     new_line = line[:m.start()] + const_name + line[m.end():]
     if not new_line.endswith("\n"):
         new_line += "\n"

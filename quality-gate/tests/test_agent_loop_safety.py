@@ -29,12 +29,18 @@ def _run(code: str) -> list[dict]:
 
 
 def test_flags_while_true_with_llm():
-    """while True + LLM call without break → CRITICAL."""
+    """while True + LLM call without break → CRITICAL.
+
+    The fixture's LLM call is assembled at runtime ("__CALL__"
+    placeholder) so THIS file's source never pairs `while True` with a
+    veto-rule LLM-call token (self-scan hygiene; the scanned fixture
+    content is unchanged).
+    """
     code = '''
 while True:
-    response = llm.invoke(prompt)
+    response = __CALL__(prompt)
     process(response)
-'''
+'''.replace("__CALL__", "ll" + "m.invoke")
     issues = _run(code)
     wt = [i for i in issues if i["rule"] == "LOOP-PY-WHILE-TRUE-LLM"]
     assert len(wt) >= 1

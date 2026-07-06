@@ -44,17 +44,11 @@ jobs:
       - name: Test suites (blocking)
         run: make test
 
-      - name: Quality Gate (report-only until E0.6 baseline)
-        run: python quality-gate/quality_gate.py --root . --mode audit --json --sarif qg.sarif
+      - name: Quality Gate (blocking — baseline ratchet, E0.6)
+        run: python quality-gate/quality_gate.py --root . --mode check --baseline .quality-gate.baseline.json --json --sarif qg.sarif
 
-      # report-only until E0.4/E0.6 land a green path: CK exits 1 on
-      # >=high findings (236 on 2026-07-06) and is silent without
-      # --verbose. This is the workflow's ONLY masked step; flip
-      # ENGINE_PROFILE["CK_BLOCKING"] to True (drops continue-on-error)
-      # once the >=high findings are baselined or cleared.
-      - name: Cathedral Keeper (architecture, report-only)
+      - name: Cathedral Keeper (architecture)
         run: python cathedral-keeper/ck.py analyze --root . --blast-radius --verbose --out-md ck-report.md --out-json ck-report.json
-        continue-on-error: true
 
       - name: Upload CK reports
         if: always()

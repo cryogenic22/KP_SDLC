@@ -41,27 +41,31 @@ from pathlib import Path
 from typing import List, Mapping, Optional, Tuple
 
 # ── Engine profile ────────────────────────────────────────────────────
-# The engine repo's knobs. Flip points — each is a one-line change here,
-# then regenerate and commit the workflow together with this file (the sync
-# test makes a half-flip impossible):
+# The engine repo's knobs. Each is a one-line change here, then regenerate
+# and commit the workflow together with this file (the sync test makes a
+# half-flip impossible):
 #
-#   QG_CMD           report-only today: '--mode audit' exits 0 naturally, so
-#                    no continue-on-error mask is needed. After E0.6 commits
-#                    .quality-gate.baseline.json, flip to '--mode check
-#                    --baseline .quality-gate.baseline.json' (blocking ratchet).
-#   CK_BLOCKING      False -> True drops the continue-on-error mask. Flip once
-#                    E0.4's baseline machinery or E0.6 remediation clears the
-#                    >=high findings CK exits 1 on today (236 on 2026-07-06).
+#   QG_CMD           BLOCKING since E0.6: '--mode check' against the
+#                    committed .quality-gate.baseline.json (per-file
+#                    ratchet — tolerated debt passes, any regression or
+#                    new sub-floor file exits 1). ADR 0003 records the
+#                    baselined debt and its expiry plan.
+#   CK_BLOCKING      True since E0.6: CK's QG ingestion is baseline-aware
+#                    (baselined, non-regressed files ingest low), so
+#                    `ck analyze` exits 0 on tolerated debt and the last
+#                    continue-on-error mask is gone. Flipping this back to
+#                    False re-masks the step (dated justification required).
 #   INCLUDE_PROCESS  already True from birth — E0.3 shipped
 #                    harness/process/check_pr_template.py before self-CI landed.
 ENGINE_PROFILE = {
     "PYTHON_VERSION": "3.12",
-    "QG_STEP_NAME": "Quality Gate (report-only until E0.6 baseline)",
+    "QG_STEP_NAME": "Quality Gate (blocking — baseline ratchet, E0.6)",
     "QG_CMD": (
         "python quality-gate/quality_gate.py"
-        " --root . --mode audit --json --sarif qg.sarif"
+        " --root . --mode check --baseline .quality-gate.baseline.json"
+        " --json --sarif qg.sarif"
     ),
-    "CK_BLOCKING": False,
+    "CK_BLOCKING": True,
     "INCLUDE_PROCESS": True,
 }
 
@@ -164,18 +168,22 @@ _SARIF_STEP = (
 
 
 def _ck_step(profile: Mapping) -> str:
-    """The CK step: blocking, or masked with the dated justification."""
+    """The CK step: blocking (the engine default since E0.6), or masked.
+
+    The masked branch is kept for an emergency flip-back only: it re-adds
+    continue-on-error, so using it requires a dated justification in the
+    comment below and a plan to restore CK_BLOCKING=True.
+    """
     if profile["CK_BLOCKING"]:
         return (
             "      - name: Cathedral Keeper (architecture)\n"
             f"        run: {_CK_CMD}"
         )
     return (
-        "      # report-only until E0.4/E0.6 land a green path: CK exits 1 on\n"
-        "      # >=high findings (236 on 2026-07-06) and is silent without\n"
-        "      # --verbose. This is the workflow's ONLY masked step; flip\n"
-        "      # ENGINE_PROFILE[\"CK_BLOCKING\"] to True (drops continue-on-error)\n"
-        "      # once the >=high findings are baselined or cleared.\n"
+        "      # report-only: CK exits 1 on >=high findings. This is the\n"
+        "      # workflow's ONLY masked step; flip ENGINE_PROFILE[\"CK_BLOCKING\"]\n"
+        "      # back to True (drops continue-on-error) as soon as the >=high\n"
+        "      # findings are baselined or cleared (see ADR 0003).\n"
         "      - name: Cathedral Keeper (architecture, report-only)\n"
         f"        run: {_CK_CMD}\n"
         "        continue-on-error: true"

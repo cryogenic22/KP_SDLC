@@ -108,8 +108,18 @@ def test_engine_paths_not_vendor_paths():
     assert "python harness/process/check_pr_template.py" in rendered
     assert ".github/scripts/check_pr_template.py" not in rendered
     assert "tools/qa/" not in rendered
-    assert "python quality-gate/quality_gate.py --root . --mode audit" in rendered
+    # E0.6: QG is blocking (check mode against the committed baseline);
+    # a rendered audit-mode QG step would be a silent un-flip.
+    assert (
+        "python quality-gate/quality_gate.py --root . --mode check"
+        " --baseline .quality-gate.baseline.json" in rendered
+    )
+    assert "--mode audit" not in rendered
     assert "python cathedral-keeper/ck.py analyze --root . --blast-radius --verbose" in rendered
+    # E0.6: CK is blocking too — the workflow's last continue-on-error
+    # mask is gone (only SARIF/artifact uploads may keep it).
+    assert ENGINE_PROFILE["CK_BLOCKING"] is True
+    assert "Cathedral Keeper (architecture, report-only)" not in rendered
     assert "uv sync" not in rendered
     assert "python harness/selfci/gen_quality_workflow.py --check" in rendered
 

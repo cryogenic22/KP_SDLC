@@ -254,6 +254,7 @@ class QualityGate:
         self.issues: list[Issue] = []
         self.stats = defaultdict(int)
         self.file_prs: dict[str, dict[str, Any]] = {}
+        self._baseline_tolerated: frozenset[str] = frozenset()
         if qg_baseline is not None:
             (self.baseline_path, self._baseline_explicit, self._baseline_data,
              self._baseline_status) = qg_baseline.init_state(baseline, self.config, self.root_dir)
@@ -976,11 +977,15 @@ class QualityGate:
 
         if RuleContext is not None:
             def _add_issue_bridge(*, severity: Any = None, **kwargs: Any) -> None:
-                sev = severity
-                if isinstance(sev, str):
-                    sev = _parse_severity(sev, default=Severity.WARNING)
-                if sev is None:
-                    sev = Severity.WARNING
+                # Normalize pack severities (qg.types.Severity enums or
+                # strings) to the ENGINE's Severity, exactly like
+                # _pack_add_issue does. A foreign enum passed through
+                # unnormalized compares unequal to the engine's members,
+                # so its issues silently bypassed PRS error/warning
+                # counting (undercounted scores) and E0.6's tolerated-
+                # error accounting.
+                sev = _parse_severity(getattr(severity, "value", severity),
+                                      default=Severity.WARNING)
                 if "file" not in kwargs:
                     kwargs["file"] = str(file_path)
                 self._add_issue(severity=sev, **kwargs)
@@ -1218,7 +1223,7 @@ class QualityGate:
         thresholds = self.config.get("thresholds", {})
         max_errors = thresholds.get("error_count", 0)
 
-        error_count = self.stats.get('error', 0)
+        error_count = self.stats.get('error', 0) - self._tolerated_error_count()
 
         passed = error_count <= max_errors
 
@@ -1235,7 +1240,26 @@ class QualityGate:
             self._add_issue(file=str(self.root_dir / item.pop("file")), **item)
         for key, value in outcome["stats"].items():
             self.stats[key] = value
+        self._baseline_tolerated = frozenset(outcome.get("tolerated", ()))
         return int(outcome["failed"])
+
+    def _tolerated_error_count(self) -> int:
+        """Error findings in baselined, non-regressed files (E0.6).
+
+        These are the known debt the active ratchet tolerates: they stay
+        in the report and the stats, but must not fail the gate — a
+        regression (or a veto) removes the file from the tolerated set,
+        so every NEW error still blocks. Zero when no ratchet is active.
+        """
+        if not self._baseline_tolerated:
+            return 0
+        spared = sum(
+            1 for issue in self.issues
+            if issue.severity == Severity.ERROR
+            and qg_baseline.normalize_key(issue.file) in self._baseline_tolerated
+        )
+        self.stats["baseline_tolerated_errors"] = spared
+        return spared
 
     def _flag_baseline_load_failure(self) -> None:
         """Fail closed when a requested baseline is missing or corrupt (E0.4)."""

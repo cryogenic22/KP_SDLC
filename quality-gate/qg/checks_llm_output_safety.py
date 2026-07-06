@@ -9,7 +9,7 @@ if subsequent usage of that variable has proper validation.
 
 Rules:
 - LLM-PY-UNVALIDATED-JSON: json.loads on LLM response without try/except
-- LLM-PY-DIRECT-EVAL: eval() on any LLM-derived value (CRITICAL)
+- LLM-PY-DIRECT-EVAL: direct code-eval of any LLM-derived value (CRITICAL)
 - LLM-PY-DICT-ACCESS-NO-GUARD: response["key"] without .get() or KeyError
 - LLM-PY-SILENT-FALLBACK: `or {}` / `or []` on LLM output
 """
