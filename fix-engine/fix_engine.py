@@ -80,7 +80,21 @@ def _build_patches(
         if conf < confidence_threshold:
             continue
 
-        patch = fix_fn(finding, root)
+        # Registered fixers take (finding, file_content, config) — resolve
+        # and read the target file here; a finding pointing at a missing or
+        # unreadable file is skipped, never a crash.
+        rel = finding.get("file", finding.get("file_path", ""))
+        if not rel:
+            continue
+        target = Path(rel)
+        if not target.is_absolute():
+            target = root / target
+        try:
+            file_content = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        patch = fix_fn(finding, file_content, {})
         if patch is not None:
             patches.append(patch)
     return patches

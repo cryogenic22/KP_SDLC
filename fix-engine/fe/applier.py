@@ -84,7 +84,16 @@ def _write_lines(
 # ---------------------------------------------------------------------------
 
 def _validate_python(text: str) -> Optional[str]:
-    """Return an error message when *text* is not valid Python, else None."""
+    """Return an error message when *text* is not valid Python, else None.
+
+    A leading U+FEFF is stripped first: CPython itself accepts a UTF-8
+    BOM in source files (it decodes them via utf-8-sig), but
+    ``ast.parse`` on an already-decoded str rejects the BOM — without
+    the strip, every BOM'd .py file would be falsely blocked with an
+    "invalid non-printable character U+FEFF" reason.
+    """
+    if text.startswith("﻿"):
+        text = text[1:]
     try:
         ast.parse(text)
     except SyntaxError as exc:
@@ -155,9 +164,22 @@ def _apply_one(lines: List[str], patch: FixPatch) -> Optional[str]:
             f"expected {patch.original!r}, found {actual!r}"
         )
 
-    # Replace the line(s).
-    replacement_lines = patch.replacement.split("\n") if patch.replacement else [""]
-    original_line_count = len(patch.original.split("\n")) if patch.original else 1
+    # Replace the line(s). Normalize CRLF/CR inside the patch text first:
+    # line bodies must never carry \r — the file's EOL style is re-applied
+    # uniformly by _write_lines (E0.8 byte-fidelity), so a smuggled \r
+    # would yield mixed EOL on LF files or \r\r\n on CRLF files.
+    replacement = patch.replacement.replace("\r\n", "\n").replace("\r", "\n")
+    original = patch.original.replace("\r\n", "\n").replace("\r", "\n")
+    # A single trailing newline is a line TERMINATOR, not an extra line:
+    # fixers emit 'except Exception:\n' meaning exactly one line. Counting
+    # it as a second (empty) line made the patch swallow the following
+    # line — silent corruption that the post-apply syntax gate now blocks.
+    if replacement.endswith("\n"):
+        replacement = replacement[:-1]
+    if original.endswith("\n"):
+        original = original[:-1]
+    replacement_lines = replacement.split("\n") if replacement else [""]
+    original_line_count = len(original.split("\n")) if original else 1
     lines[idx: idx + original_line_count] = replacement_lines
     return None
 
