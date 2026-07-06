@@ -1,0 +1,1071 @@
+{
+  "commit": "c0bde2591f1d07fbbc3ec6f9fcbf579cbb6e6842",
+  "files": {
+    "cathedral-keeper/cathedral_keeper/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/blast_precommit.py": {
+      "errors": 1,
+      "prs": 80.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "cathedral-keeper/cathedral_keeper/blast_radius.py": {
+      "errors": 1,
+      "prs": 80.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "cathedral-keeper/cathedral_keeper/cache.py": {
+      "errors": 2,
+      "prs": 80.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/cli.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/coherence.py": {
+      "errors": 5,
+      "prs": 44.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/cathedral_keeper/config.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/git_utils.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/heat_map.py": {
+      "errors": 1,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/cathedral_keeper/integrations/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/integrations/external_findings_json.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "cathedral-keeper/cathedral_keeper/integrations/quality_gate.py": {
+      "errors": 1,
+      "prs": 86.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "cathedral-keeper/cathedral_keeper/integrations/registry.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/integrations/types.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/mitigations.py": {
+      "errors": 1,
+      "prs": 86.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "cathedral-keeper/cathedral_keeper/models.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/path_glob.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/cathedral_keeper/policies/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/cathedral_keeper/policies/agentic_harness.py": {
+      "errors": 1,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "cathedral-keeper/cathedral_keeper/policies/boundaries.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "cathedral-keeper/cathedral_keeper/policies/config_sprawl.py": {
+      "errors": 2,
+      "prs": 54.0,
+      "vetoed": false,
+      "warnings": 13
+    },
+    "cathedral-keeper/cathedral_keeper/policies/cycles.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/cathedral_keeper/policies/dead_modules.py": {
+      "errors": 1,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "cathedral-keeper/cathedral_keeper/policies/dependency_health.py": {
+      "errors": 3,
+      "prs": 26.0,
+      "vetoed": false,
+      "warnings": 22
+    },
+    "cathedral-keeper/cathedral_keeper/policies/drift.py": {
+      "errors": 4,
+      "prs": 46.0,
+      "vetoed": false,
+      "warnings": 7
+    },
+    "cathedral-keeper/cathedral_keeper/policies/env_parity.py": {
+      "errors": 1,
+      "prs": 56.0,
+      "vetoed": false,
+      "warnings": 17
+    },
+    "cathedral-keeper/cathedral_keeper/policies/layer_direction.py": {
+      "errors": 3,
+      "prs": 68.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/cathedral_keeper/policies/schema_drift.py": {
+      "errors": 3,
+      "prs": 46.0,
+      "vetoed": false,
+      "warnings": 12
+    },
+    "cathedral-keeper/cathedral_keeper/policies/service_boundaries.py": {
+      "errors": 2,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "cathedral-keeper/cathedral_keeper/policies/test_alignment.py": {
+      "errors": 6,
+      "prs": 22.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "cathedral-keeper/cathedral_keeper/policies/test_coverage.py": {
+      "errors": 2,
+      "prs": 78.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/cathedral_keeper/python_graph.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "cathedral-keeper/cathedral_keeper/python_imports.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "cathedral-keeper/cathedral_keeper/python_roots.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "cathedral-keeper/cathedral_keeper/red_team.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "cathedral-keeper/cathedral_keeper/reporting.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/cathedral_keeper/retry.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/cathedral_keeper/runner.py": {
+      "errors": 1,
+      "prs": 50.0,
+      "vetoed": false,
+      "warnings": 20
+    },
+    "cathedral-keeper/cathedral_keeper/severity_gradient.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/cathedral_keeper/test_recommender.py": {
+      "errors": 1,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/cathedral_keeper/trend.py": {
+      "errors": 1,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "cathedral-keeper/ck.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "cathedral-keeper/tests/test_agentic_harness_policy.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "cathedral-keeper/tests/test_blast_precommit.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_blast_radius.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_cache.py": {
+      "errors": 1,
+      "prs": 74.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "cathedral-keeper/tests/test_coherence.py": {
+      "errors": 0,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 12
+    },
+    "cathedral-keeper/tests/test_heat_map.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_mitigations.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_phase1_qg_integration.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_phase1_retry.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "cathedral-keeper/tests/test_red_team.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_runner_policy_wiring.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "cathedral-keeper/tests/test_schema_drift.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_severity_gradient.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_test_coverage.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_test_recommender.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "cathedral-keeper/tests/test_trend_scoring.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "fix-engine/fe/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/fe/applier.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "fix-engine/fe/config.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "fix-engine/fe/fixes_additional.py": {
+      "errors": 1,
+      "prs": 70.0,
+      "vetoed": false,
+      "warnings": 10
+    },
+    "fix-engine/fe/fixes_ai_llm.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "fix-engine/fe/fixes_foundation.py": {
+      "errors": 0,
+      "prs": 78.0,
+      "vetoed": false,
+      "warnings": 11
+    },
+    "fix-engine/fe/fixes_python.py": {
+      "errors": 2,
+      "prs": 62.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "fix-engine/fe/fixes_security.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "fix-engine/fe/llm_fixes.py": {
+      "errors": 3,
+      "prs": 58.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "fix-engine/fe/registry.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/fe/suggest.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "fix-engine/fe/types.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/fix_engine.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "fix-engine/sarif_formatter.py": {
+      "errors": 2,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "fix-engine/tests/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/tests/test_applier.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/tests/test_applier_fidelity.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "fix-engine/tests/test_applier_safety.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "fix-engine/tests/test_cli_fixable_pipeline.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "fix-engine/tests/test_cli_sarif.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "fix-engine/tests/test_config.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/tests/test_fix_golden.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "fix-engine/tests/test_fixes_additional.py": {
+      "errors": 1,
+      "prs": 74.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "fix-engine/tests/test_registry.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "fix-engine/tests/test_sarif_enhanced.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "fix-engine/tests/test_suggest.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "harness/hooks/reuse_injector.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "harness/hooks/second_pass_reviewer.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "harness/process/check_pr_template.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "harness/process/tests/test_check_pr_template.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "harness/selfci/gen_quality_workflow.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "harness/selfci/tests/test_makefile_ci_contract.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "harness/selfci/tests/test_quality_workflow_sync.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "harness/structural-floor/gen_codeowners.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "harness/structural-floor/tests/test_gen_codeowners.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "harness/structural-floor/tests/test_protected_surface_sync.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "quality-gate/check_commit_msg.py": {
+      "errors": 1,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 7
+    },
+    "quality-gate/qg/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "quality-gate/qg/autofix.py": {
+      "errors": 0,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "quality-gate/qg/baseline.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "quality-gate/qg/checks_agent_loops.py": {
+      "errors": 0,
+      "prs": 74.0,
+      "vetoed": false,
+      "warnings": 13
+    },
+    "quality-gate/qg/checks_agentic_harness.py": {
+      "errors": 3,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 42
+    },
+    "quality-gate/qg/checks_ai_code_quality.py": {
+      "errors": 2,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 46
+    },
+    "quality-gate/qg/checks_ai_llm.py": {
+      "errors": 12,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 49
+    },
+    "quality-gate/qg/checks_ai_smells.py": {
+      "errors": 5,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 62
+    },
+    "quality-gate/qg/checks_comments.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "quality-gate/qg/checks_complexity.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "quality-gate/qg/checks_data_contracts.py": {
+      "errors": 1,
+      "prs": 56.0,
+      "vetoed": false,
+      "warnings": 17
+    },
+    "quality-gate/qg/checks_databases.py": {
+      "errors": 1,
+      "prs": 66.0,
+      "vetoed": false,
+      "warnings": 12
+    },
+    "quality-gate/qg/checks_debug.py": {
+      "errors": 0,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 12
+    },
+    "quality-gate/qg/checks_docparse.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "quality-gate/qg/checks_duplicates.py": {
+      "errors": 0,
+      "prs": 80.0,
+      "vetoed": false,
+      "warnings": 10
+    },
+    "quality-gate/qg/checks_fastapi.py": {
+      "errors": 5,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 30
+    },
+    "quality-gate/qg/checks_imports.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "quality-gate/qg/checks_langchain.py": {
+      "errors": 6,
+      "prs": 12.0,
+      "vetoed": false,
+      "warnings": 14
+    },
+    "quality-gate/qg/checks_llm_output_safety.py": {
+      "errors": 5,
+      "prs": 20.0,
+      "vetoed": false,
+      "warnings": 15
+    },
+    "quality-gate/qg/checks_mongodb.py": {
+      "errors": 0,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "quality-gate/qg/checks_neo4j.py": {
+      "errors": 0,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 12
+    },
+    "quality-gate/qg/checks_nextjs.py": {
+      "errors": 2,
+      "prs": 30.0,
+      "vetoed": false,
+      "warnings": 25
+    },
+    "quality-gate/qg/checks_observability.py": {
+      "errors": 1,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "quality-gate/qg/checks_performance.py": {
+      "errors": 1,
+      "prs": 52.0,
+      "vetoed": false,
+      "warnings": 19
+    },
+    "quality-gate/qg/checks_prompt_quality.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "quality-gate/qg/checks_python.py": {
+      "errors": 2,
+      "prs": 48.0,
+      "vetoed": false,
+      "warnings": 16
+    },
+    "quality-gate/qg/checks_safety.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "quality-gate/qg/checks_security.py": {
+      "errors": 1,
+      "prs": 54.0,
+      "vetoed": false,
+      "warnings": 18
+    },
+    "quality-gate/qg/checks_size.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "quality-gate/qg/checks_sqlalchemy.py": {
+      "errors": 2,
+      "prs": 60.0,
+      "vetoed": false,
+      "warnings": 10
+    },
+    "quality-gate/qg/checks_tests_smells.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "quality-gate/qg/checks_text.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "quality-gate/qg/checks_ux_errors.py": {
+      "errors": 2,
+      "prs": 54.0,
+      "vetoed": false,
+      "warnings": 13
+    },
+    "quality-gate/qg/context.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "quality-gate/qg/path_glob.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "quality-gate/qg/prs_engine.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "quality-gate/qg/rules_phase1.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "quality-gate/qg/rules_phase2.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "quality-gate/qg/rules_tests.py": {
+      "errors": 0,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "quality-gate/qg/sarif_output.py": {
+      "errors": 1,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/qg/tool_status.py": {
+      "errors": 2,
+      "prs": 70.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "quality-gate/qg/types.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "quality-gate/quality_gate.py": {
+      "errors": 9,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 110
+    },
+    "quality-gate/tests/test_agent_loop_safety.py": {
+      "errors": 1,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_agentic_harness.py": {
+      "errors": 6,
+      "prs": 12.0,
+      "vetoed": false,
+      "warnings": 14
+    },
+    "quality-gate/tests/test_ai_code_detection.py": {
+      "errors": 1,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 7
+    },
+    "quality-gate/tests/test_autofix.py": {
+      "errors": 0,
+      "prs": 78.0,
+      "vetoed": false,
+      "warnings": 11
+    },
+    "quality-gate/tests/test_autofix_cli.py": {
+      "errors": 2,
+      "prs": 62.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "quality-gate/tests/test_baseline_ratchet.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "quality-gate/tests/test_contextual_size.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_data_contracts.py": {
+      "errors": 0,
+      "prs": 66.0,
+      "vetoed": false,
+      "warnings": 17
+    },
+    "quality-gate/tests/test_duplicate_exemptions.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "quality-gate/tests/test_llm_output_safety.py": {
+      "errors": 5,
+      "prs": 10.0,
+      "vetoed": false,
+      "warnings": 20
+    },
+    "quality-gate/tests/test_metric_sanity.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "quality-gate/tests/test_no_vacuous_green.py": {
+      "errors": 0,
+      "prs": 88.0,
+      "vetoed": false,
+      "warnings": 6
+    },
+    "quality-gate/tests/test_prompt_quality.py": {
+      "errors": 2,
+      "prs": 54.0,
+      "vetoed": false,
+      "warnings": 13
+    },
+    "quality-gate/tests/test_prs_veto.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_pyproject.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_recomputation_fp.py": {
+      "errors": 2,
+      "prs": 66.0,
+      "vetoed": false,
+      "warnings": 7
+    },
+    "quality-gate/tests/test_reuse_injector.py": {
+      "errors": 0,
+      "prs": 84.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "quality-gate/tests/test_sarif_cli.py": {
+      "errors": 2,
+      "prs": 74.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_sarif_output.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "quality-gate/tests/test_tool_status.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "quality-gate/tests/test_tool_status_cli.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_useeffect_deps.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "quality-gate/tests/test_wire_dormant_packs.py": {
+      "errors": 0,
+      "prs": 90.0,
+      "vetoed": false,
+      "warnings": 5
+    },
+    "quality-gate/tools/export_quality_csv.py": {
+      "errors": 1,
+      "prs": 76.0,
+      "vetoed": false,
+      "warnings": 7
+    },
+    "quality-gate/tools/summarize_audit.py": {
+      "errors": 0,
+      "prs": 96.0,
+      "vetoed": false,
+      "warnings": 2
+    },
+    "reporting/__init__.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "reporting/env_loader.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "reporting/fix_integration.py": {
+      "errors": 0,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "reporting/generate_html_reports.py": {
+      "errors": 7,
+      "prs": 0.0,
+      "vetoed": false,
+      "warnings": 55
+    },
+    "reporting/generate_index.py": {
+      "errors": 1,
+      "prs": 74.0,
+      "vetoed": false,
+      "warnings": 8
+    },
+    "reporting/tests/test_reporting.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    },
+    "sdlc-init/sdlc_init/__init__.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "sdlc-init/sdlc_init/cli.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "sdlc-init/sdlc_init/executor.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "sdlc-init/sdlc_init/harness_map.py": {
+      "errors": 0,
+      "prs": 100.0,
+      "vetoed": false,
+      "warnings": 0
+    },
+    "sdlc-init/sdlc_init/manifest.py": {
+      "errors": 0,
+      "prs": 98.0,
+      "vetoed": false,
+      "warnings": 1
+    },
+    "sdlc-init/sdlc_init/phases.py": {
+      "errors": 0,
+      "prs": 92.0,
+      "vetoed": false,
+      "warnings": 4
+    },
+    "sdlc-init/tests/test_executor.py": {
+      "errors": 0,
+      "prs": 82.0,
+      "vetoed": false,
+      "warnings": 9
+    },
+    "sdlc-init/tests/test_harness_map.py": {
+      "errors": 0,
+      "prs": 94.0,
+      "vetoed": false,
+      "warnings": 3
+    }
+  },
+  "generated_at": "2026-07-06T10:50:45.602336+00:00",
+  "generated_by": "quality-gate baseline",
+  "min_score": 85,
+  "version": 1
+}

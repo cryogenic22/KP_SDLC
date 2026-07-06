@@ -24,6 +24,9 @@ nul
 
 # Quality reports (generated output — not source code)
 .quality-reports/
+qg.sarif
+ck-report.md
+ck-report.json
 
 # SQLite graph cache
 .cathedral-keeper/graph.db

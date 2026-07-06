@@ -10,7 +10,7 @@ ROOT     := $(shell pwd)
 
 # ── Test targets ─────────────────────────────────────────────────────
 
-.PHONY: test test-qg test-ck test-reporting test-init test-harness report sarif clean help
+.PHONY: test test-qg test-ck test-reporting test-init test-harness check report sarif clean help
 
 test: test-qg test-ck test-reporting test-init test-harness ## Run all test suites
 	@echo ""
@@ -87,6 +87,9 @@ test-harness: ## Run harness tests (structural-floor, process, selfci)
 	[ "$$failed" -eq 0 ]
 
 # ── Analysis targets ─────────────────────────────────────────────────
+
+check: ## Blocking Quality Gate — the exact command self-CI runs (baseline ratchet, E0.6)
+	python $(QG_DIR)/quality_gate.py --root . --mode check --baseline .quality-gate.baseline.json --json --sarif qg.sarif
 
 report: ## Run QG + CK and generate HTML report
 	python $(QG_DIR)/quality_gate.py --root $(ROOT) --json --report
