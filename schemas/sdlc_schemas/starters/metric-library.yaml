@@ -1,0 +1,20 @@
+# .sdlc-core/metric-library.yaml -- STARTER (engine-shipped, deliberately red).
+# FAILS `sdlc schemas check` until you replace every REPLACE-ME.
+# Shape: sdlc/metric-library@1 (shapes/metric-library.schema.yaml).
+schema: 'sdlc/metric-library@1'
+owner: 'REPLACE-ME'
+_note: 'Set owner to your data platform team, then declare one contract per metric id.'
+metrics:
+  revenue_total:
+    description: 'Recognised revenue in reporting currency.'
+    grain:
+      - date
+      - brand
+    source:
+      system: warehouse
+      ref: 'REPLACE-ME'
+    owner: '@org/finance-data'
+    _note: 'Set source.ref to the authoritative locator, e.g. analytics.fct_revenue.revenue_usd.'
+    tolerance:
+      type: relative
+      value: 0.005

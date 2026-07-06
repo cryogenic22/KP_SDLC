@@ -1,0 +1,334 @@
+# ==========================================================================
+# standards.schema.yaml -- SHAPE ONLY (engine layer).
+# VALUES live in .sdlc-core/standards.yaml.
+# Doctrine: every number carries a rationale (E13.0b precedent); an
+# unexplained threshold is structurally invalid.
+# RESERVED KEY: 'eval.judge_kappa_floor' is refused at load (E-RESERVED).
+# The admissibility floor is the engine constant sdlc_schemas.KAPPA_FLOOR
+# (0.80); an org knob to RAISE it is deferred to @2 (no consumer yet).
+# ==========================================================================
+$id: 'sdlc/standards@1'
+title: 'Org standards: contract-sourced thresholds + tier/gate posture matrix'
+x-instance-path: '.sdlc-core/standards.yaml'
+x-consumers:
+  - 'runtime-verify spine thresholds.get("<pack>.<check>"): the only numeric source for G4 pack checks; Loop-2 grep-gate anti-case proves pack code has no literals'
+  - 'eval-engine config resolution: checks[eval.stochastic_runs] (default n for stochastic sampling when a case omits sampling)'
+  - 'sdlc-init: manifest.profile must name a key of tiers; per-gate posture decides required-status vs continue-on-error vs parked workflows at birth; resolved tier recorded in .harness/manifest.json'
+  - 'reporting six-gate status strip + every gate runner: tiers[<tier>].gates.* posture -> exit-code semantics (block=nonzero, advise=zero+report, off=absent)'
+x-changelog:
+  - '@1 2026-07: initial shape (E1.7 proposed-v1; kappa floor moved to engine constant)'
+
+type: object
+additionalProperties: false
+required:
+  - schema
+  - owner
+  - checks
+  - tiers
+properties:
+  schema:
+    const: 'sdlc/standards@1'
+    x-consumer: 'resolve_instance() tag dispatch'
+  owner:
+    type: string
+    pattern: '^@[A-Za-z0-9_./-]+$'
+    x-forbid-placeholder: true
+    x-consumer: 'reporting: standards ownership on threshold findings'
+  checks:
+    type: object
+    minProperties: 1
+    description: 'Namespaced check id <component>.<check> -> threshold entry. Namespace = consuming component: data.*, app.*, eval.*, input.*.'
+    propertyNames:
+      pattern: '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'
+    additionalProperties:
+      $ref: '#/$defs/threshold'
+    x-consumer: 'thresholds.get() lookup surface; loader refuses reserved keys (E-RESERVED)'
+  tiers:
+    type: object
+    minProperties: 1
+    description: 'Tier name -> six-gate posture. sdlc-init manifest.profile resolves against these keys.'
+    propertyNames:
+      pattern: '^[a-z][a-z0-9_-]*$'
+    additionalProperties:
+      $ref: '#/$defs/tier'
+    x-consumer: 'sdlc-init tier resolution; Loop-5 CI wiring; six-gate strip'
+
+$defs:
+  threshold:
+    type: object
+    additionalProperties: false
+    required:
+      - value
+      - rationale
+    properties:
+      value:
+        type:
+          - number
+          - string
+          - boolean
+        description: 'Strings for level-valued checks (a11y AA), numbers for floors/ceilings, booleans for toggles.'
+        x-consumer: 'the consuming pack/engine check compare value'
+      unit:
+        enum:
+          - count
+          - percent
+          - ratio
+          - hours
+          - days
+          - ms
+          - bytes
+          - level
+        description: 'How the check interprets value; omit only for booleans.'
+        x-consumer: 'deterministic interpretation in the consuming check; radar axis labels'
+      rationale:
+        type: string
+        minLength: 10
+        x-consumer: 'report/review evidence (E13.0b: no unexplained thresholds)'
+  tier:
+    type: object
+    additionalProperties: false
+    required:
+      - gates
+    properties:
+      description:
+        type: string
+        x-consumer: 'sdlc-init tier picker text'
+      gates:
+        type: object
+        additionalProperties: false
+        required:
+          - G1
+          - G2
+          - G3
+          - G4
+          - G5
+          - G6
+        description: 'ALL SIX gates must be stated; a tier silent on a gate is ambiguous posture -> fail closed.'
+        properties:
+          G1:
+            $ref: '#/$defs/posture'
+          G2:
+            $ref: '#/$defs/posture'
+          G3:
+            $ref: '#/$defs/posture'
+          G4:
+            $ref: '#/$defs/posture'
+          G5:
+            $ref: '#/$defs/posture'
+          G6:
+            $ref: '#/$defs/posture'
+        x-consumer: 'Loop-5 CI wiring + six-gate strip'
+  posture:
+    type: object
+    additionalProperties: false
+    required:
+      - posture
+    properties:
+      posture:
+        enum:
+          - block
+          - advise
+          - 'off'
+        description: 'block = required status check; advise = continue-on-error + non-required (structural advisory ceiling); off = workflow parked.'
+        x-consumer: 'gate runner exit-code semantics; CI required-check mapping'
+
+x-valid-cases:
+  - name: minimal-standards
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks:
+        data.freshness_hours:
+          value: 24
+          unit: hours
+          rationale: 'Daily-batch warehouse; anything staler than one cycle is a pipeline failure.'
+        app.a11y_level:
+          value: 'AA'
+          unit: level
+          rationale: 'WCAG 2.1 AA is the org accessibility baseline.'
+        eval.stochastic_runs:
+          value: 5
+          unit: count
+          rationale: 'n=5 gives usable Wilson intervals at tolerable cost per tier.'
+      tiers:
+        explore:
+          description: 'Prototype tier: floors advise, only the G3 static floor blocks.'
+          gates:
+            G1:
+              posture: advise
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G5:
+              posture: advise
+            G6:
+              posture: 'off'
+        regulated:
+          description: 'Client-facing regulated tier: everything blocks.'
+          gates:
+            G1:
+              posture: block
+            G2:
+              posture: block
+            G3:
+              posture: block
+            G4:
+              posture: block
+            G5:
+              posture: block
+            G6:
+              posture: block
+
+x-anti-cases:
+  - name: threshold-without-rationale
+    must_fail_with: E-REQUIRED
+    note: 'An unexplained number is structurally invalid (E13.0b discipline).'
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks:
+        data.freshness_hours:
+          value: 24
+          unit: hours
+      tiers:
+        explore:
+          gates:
+            G1:
+              posture: advise
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G5:
+              posture: advise
+            G6:
+              posture: 'off'
+  - name: tier-silent-on-a-gate
+    must_fail_with: E-REQUIRED
+    note: 'Missing G5 -> ambiguous posture; fail closed, never default.'
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks:
+        data.freshness_hours:
+          value: 24
+          unit: hours
+          rationale: 'Daily-batch warehouse; staler than one cycle is failure.'
+      tiers:
+        explore:
+          gates:
+            G1:
+              posture: advise
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G6:
+              posture: 'off'
+  - name: posture-warn
+    must_fail_with: E-ENUM
+    note: 'warn is not a posture; the CI vocabulary is block/advise/off.'
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks:
+        data.freshness_hours:
+          value: 24
+          unit: hours
+          rationale: 'Daily-batch warehouse; staler than one cycle is failure.'
+      tiers:
+        explore:
+          gates:
+            G1:
+              posture: warn
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G5:
+              posture: advise
+            G6:
+              posture: 'off'
+  - name: unnamespaced-check-id
+    must_fail_with: E-PATTERN
+    note: 'freshness without a component namespace cannot be grep-gate attributed.'
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks:
+        freshness:
+          value: 24
+          unit: hours
+          rationale: 'Daily-batch warehouse; staler than one cycle is failure.'
+      tiers:
+        explore:
+          gates:
+            G1:
+              posture: advise
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G5:
+              posture: advise
+            G6:
+              posture: 'off'
+  - name: reserved-kappa-floor-key
+    must_fail_with: E-RESERVED
+    note: 'Loader-level reserved-key rule: the admissibility floor is the engine constant KAPPA_FLOOR; an overlay entry would be silently non-consumed (or a lowering attempt) -- refused loudly instead.'
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks:
+        eval.judge_kappa_floor:
+          value: 0.75
+          unit: ratio
+          rationale: 'Attempting to lower the doctrine floor.'
+      tiers:
+        explore:
+          gates:
+            G1:
+              posture: advise
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G5:
+              posture: advise
+            G6:
+              posture: 'off'
+  - name: empty-checks
+    must_fail_with: E-MIN-PROPS
+    note: 'An empty threshold contract makes every lookup fail open.'
+    instance:
+      schema: 'sdlc/standards@1'
+      owner: '@org/platform'
+      checks: {}
+      tiers:
+        explore:
+          gates:
+            G1:
+              posture: advise
+            G2:
+              posture: advise
+            G3:
+              posture: block
+            G4:
+              posture: advise
+            G5:
+              posture: advise
+            G6:
+              posture: 'off'

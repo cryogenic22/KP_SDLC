@@ -1,0 +1,32 @@
+# .sdlc-core/standards.yaml -- STARTER (engine-shipped, deliberately red).
+# FAILS `sdlc schemas check` until you replace every REPLACE-ME.
+# Shape: sdlc/standards@1 (shapes/standards.schema.yaml).
+# Every threshold carries a rationale (no unexplained numbers).
+schema: 'sdlc/standards@1'
+owner: 'REPLACE-ME'
+_note: 'Set owner to your platform team, then tune the thresholds and tier postures.'
+checks:
+  data.freshness_hours:
+    value: 24
+    unit: hours
+    rationale: 'Daily-batch warehouse; anything staler than one cycle is a pipeline failure.'
+  eval.stochastic_runs:
+    value: 5
+    unit: count
+    rationale: 'n=5 gives usable Wilson intervals at tolerable cost per tier.'
+tiers:
+  explore:
+    description: 'Prototype tier: floors advise, only the G3 static floor blocks.'
+    gates:
+      G1:
+        posture: advise
+      G2:
+        posture: advise
+      G3:
+        posture: block
+      G4:
+        posture: advise
+      G5:
+        posture: advise
+      G6:
+        posture: 'off'
