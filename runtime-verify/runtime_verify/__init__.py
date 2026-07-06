@@ -18,7 +18,7 @@ from .adapters import (
     AdapterUnresolved,
     StubAdapter,
 )
-from .model import Assertion, CheckResult, Issue, Severity
+from .model import CheckResult, Issue, Severity
 from .packs.data_reconcile import reconcile
 from .thresholds import (
     ContractInvalid,
@@ -33,7 +33,6 @@ __all__ = [
     "AdapterProtocol",
     "AdapterRegistry",
     "AdapterUnresolved",
-    "Assertion",
     "CheckResult",
     "ContractInvalid",
     "Issue",

@@ -54,7 +54,19 @@ def _reconcile_one(metric_id, metric, registry, reported, contract_path):
     if metric_id not in reported:
         detail = f"no reported value supplied for metric {metric_id!r}"
         return False, _fail(RULE_NO_DATA, metric_id, metric, contract_path, detail)
-    return _compare(metric_id, metric, authoritative, reported[metric_id], contract_path)
+    observed = reported[metric_id]
+    if _non_numeric(authoritative) or _non_numeric(observed):
+        detail = (f"non-numeric value (authoritative={authoritative!r}, "
+                  f"reported={observed!r}); a NULL is absent data, not a match")
+        return False, _fail(RULE_NO_DATA, metric_id, metric, contract_path, detail)
+    return _compare(metric_id, metric, authoritative, observed, contract_path)
+
+
+def _non_numeric(value) -> bool:
+    """A value must be a real number to reconcile. None (SQL NULL), a bool, or a
+    non-numeric type is absent/invalid data -- fail closed as RV-NO-DATA rather
+    than crash on ``abs(x - None)``."""
+    return not isinstance(value, (int, float)) or isinstance(value, bool)
 
 
 def _compare(metric_id, metric, authoritative, observed, contract_path):

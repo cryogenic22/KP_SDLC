@@ -73,25 +73,52 @@ def _registry(values):
 
 # ── anti-case 1: grep-gate (no numeric literal in comparison position) ─────
 
-def _is_numeric_constant(operand):
-    return (
-        isinstance(operand, ast.Constant)
-        and isinstance(operand.value, (int, float))
-        and not isinstance(operand.value, bool)
-    )
+_NUMERIC_CTORS = {"float", "int", "complex", "Decimal", "Fraction", "round"}
 
 
-def _has_numeric_operand(node):
-    return any(_is_numeric_constant(op) for op in [node.left, *node.comparators])
+def _float_literals(tree):
+    return [n.lineno for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, float)]
 
 
-def _numeric_comparison_literals(source):
+def _nontrivial_int_literals(tree):
+    # 0 and 1 are structural (counts, indices); any other int in check code is a
+    # candidate magic number / hidden bound.
+    return [n.lineno for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, int)
+            and not isinstance(n.value, bool) and n.value not in (0, 1)]
+
+
+def _bool_in_compare(tree):
+    hits = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            hits += [node.lineno for op in operands
+                     if isinstance(op, ast.Constant) and isinstance(op.value, bool)]
+    return hits
+
+
+def _numeric_from_literal(tree):
+    # float("0.05") / int("5") / Decimal("0.1") -- a number constructed from a
+    # constant is still a hardcoded number.
+    hits = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in _NUMERIC_CTORS and node.args
+                and isinstance(node.args[0], ast.Constant)):
+            hits.append(node.lineno)
+    return hits
+
+
+def _smuggled_numbers(source):
+    """Every way a compare number could hide in check code: a float literal, a
+    non-trivial int literal, a bool in a comparison (``True == 1``), or a number
+    constructed from a literal (``float('0.05')``). The detector must catch all
+    of them or the grep-gate is theatre (adversarial review, Loop 2)."""
     tree = ast.parse(source)
-    return [
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Compare) and _has_numeric_operand(node)
-    ]
+    return sorted(_float_literals(tree) + _nontrivial_int_literals(tree)
+                  + _bool_in_compare(tree) + _numeric_from_literal(tree))
 
 
 def _pack_sources():
@@ -99,18 +126,33 @@ def _pack_sources():
     return [(path, path.read_text(encoding="utf-8")) for path in files]
 
 
-def test_grep_gate_detector_fires_on_a_literal_bound():
-    # Positive control: if the detector could not catch a literal in comparison
-    # position, the gate below would be vacuous.
-    assert _numeric_comparison_literals("def f(x):\n    return x <= 5\n")
+def test_grep_gate_catches_every_smuggling_form():
+    # Positive controls: the natural ways a future dev reintroduces a hardcoded
+    # tolerance. Each MUST be caught or the gate below is vacuous.
+    bypasses = [
+        "def f(x):\n    return x <= 0.05\n",              # direct float literal
+        "def f(x):\n    t = 0.05\n    return x <= t\n",   # assign-then-compare
+        "def f(x):\n    return x <= float('0.05')\n",     # constructed from literal
+        "def f(x, b=0.05):\n    return x <= b\n",         # default argument
+        "def f(x):\n    return x <= True\n",              # bool True == 1
+        "def f(x):\n    return x <= (0.05,)[0]\n",        # tuple index
+        "def f(x):\n    return x <= 5\n",                 # int literal in compare
+    ]
+    for src in bypasses:
+        assert _smuggled_numbers(src), f"grep-gate missed a smuggled number: {src!r}"
 
 
-def test_no_numeric_literal_in_comparison_in_pack_code():
+def test_grep_gate_allows_structural_zero_and_one():
+    # 0/1 are structural (counts, indices), never a tolerance -- must not trip.
+    assert _smuggled_numbers("def f(xs):\n    n = 0\n    return xs[0], n > 1\n") == []
+
+
+def test_no_hardcoded_number_in_check_code():
     sources = _pack_sources()
     assert len(sources) >= 2  # thresholds.py + at least one pack module
     for path, source in sources:
-        hits = _numeric_comparison_literals(source)
-        assert hits == [], f"{path.name} has a numeric literal in comparison at {hits}"
+        hits = _smuggled_numbers(source)
+        assert hits == [], f"{path.name} has a hardcoded number at lines {hits}"
 
 
 # ── anti-case 2: vacuous artefact fails closed ─────────────────────────────
@@ -164,6 +206,21 @@ def test_missing_reported_value_fails_closed():
     assert result.ok is False
     assert result.checked == 0
     assert any(issue.rule == "RV-NO-DATA" for issue in result.issues)
+
+
+def test_null_or_non_numeric_value_fails_closed_not_crash():
+    metrics = {"m": _metric(ref="null.ref")}
+    # a NULL (None) authoritative value -- the commonest SQL-warehouse signal --
+    # must be a fail-closed RV-NO-DATA finding, never an uncaught TypeError.
+    null_auth = reconcile(_library(metrics=metrics),
+                          _registry({"null.ref": None}), {"m": 10})
+    assert null_auth.ok is False
+    assert any(issue.rule == "RV-NO-DATA" for issue in null_auth.issues)
+    # a non-numeric reported value likewise fails closed, not crashes.
+    bad_reported = reconcile(_library(metrics=metrics),
+                             _registry({"null.ref": 10}), {"m": "N/A"})
+    assert bad_reported.ok is False
+    assert any(issue.rule == "RV-NO-DATA" for issue in bad_reported.issues)
 
 
 # ── anti-case 4: tolerance boundary (absolute, relative, a == 0, one ulp) ───
@@ -287,7 +344,10 @@ def test_invalid_contract_is_refused_upstream():
         try:
             load_validated_library(core)
         except ContractInvalid as exc:
-            assert exc.findings   # carries the E1.7 findings
+            rules = {finding["rule"] for finding in exc.findings}
+            # pinned: the invalid library omits `tolerance` -> E1.7 E-REQUIRED,
+            # not some unrelated failure that would make this anti-case vacuous.
+            assert "SCHEMA-E-REQUIRED" in rules, rules
             return
         raise AssertionError("G4 must refuse to run on an E1.7-invalid contract")
 

@@ -1,4 +1,4 @@
-"""The runtime-verify model: Assertion -> Issue -> CheckResult.
+"""The runtime-verify model: Issue -> CheckResult.
 
 ``Issue.to_finding()`` renders a failed assertion in the quality-gate finding
 shape ({rule, severity, file, line, message}) so Loop 5 reporting folds a
@@ -24,16 +24,6 @@ class Severity(str, Enum):
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
-
-
-@dataclass(frozen=True)
-class Assertion:
-    """An intent to check one metric before it is evaluated."""
-
-    id: str
-    description: str
-    metric_id: str
-    kind: str
 
 
 @dataclass(frozen=True)
