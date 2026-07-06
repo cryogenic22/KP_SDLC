@@ -1,0 +1,17 @@
+# .sdlc-core/rubrics/example-rubric.yaml -- STARTER (engine-shipped, red).
+# FAILS `sdlc schemas check` until you replace every REPLACE-ME.
+# Shape: sdlc/rubric@1 (shapes/rubric.schema.yaml). A draft rubric (no
+# calibration block) is a legal shape that simply cannot gate until measured.
+schema: 'sdlc/rubric@1'
+id: example-rubric
+version: 1
+description: 'Replace with the judgement this rubric measures.'
+prompt: 'REPLACE-ME'
+_note: 'Set prompt to your judge template. Add a calibration block (kappa + binding) before this rubric can gate.'
+scale:
+  min: 0
+  max: 4
+threshold: 3
+criteria:
+  - id: coherence
+    description: 'Sections follow logically; no orphaned claims.'

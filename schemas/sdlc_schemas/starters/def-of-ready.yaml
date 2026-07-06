@@ -1,0 +1,23 @@
+# .sdlc-core/def-of-ready.yaml -- STARTER (engine-shipped, deliberately red).
+# This file FAILS `sdlc schemas check` until you replace every REPLACE-ME.
+# Shape: sdlc/def-of-ready@1 (shapes/def-of-ready.schema.yaml).
+# _note keys are yours to keep; the engine never reads them.
+schema: 'sdlc/def-of-ready@1'
+owner: 'REPLACE-ME'
+_note: 'Set owner to your accountable team, e.g. @org/delivery-leads, then define one checklist per work-item kind.'
+kinds:
+  application:
+    description: 'Full-stack application work item.'
+    requires:
+      - id: acceptance-criteria
+        description: 'Spec has an Acceptance Criteria section.'
+        severity: block
+        check:
+          type: section_present
+          heading: 'Acceptance Criteria'
+      - id: rollback-noted
+        description: 'Spec mentions a rollback or kill-switch plan.'
+        severity: warn
+        check:
+          type: pattern_present
+          pattern: '(?i)rollback|kill.?switch'

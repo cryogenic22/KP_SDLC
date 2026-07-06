@@ -1,0 +1,270 @@
+# ==========================================================================
+# def-of-ready.schema.yaml -- SHAPE ONLY (engine layer, MIT, brand-neutral).
+# VALUES live in .sdlc-core/def-of-ready.yaml (private overlay), never here.
+# Written in the miniyaml strict subset: block style; single-quoted strings
+# literal; '|' literal block scalars; [] / {} empty-collection literals.
+# VALIDATOR-GLOBAL RULES (apply to every instance, all six schemas):
+#   * instance keys matching ^_ (annotations: _note, _rationale) and ^x_
+#     (org extensions, engine never reads) are skipped under
+#     additionalProperties:false and preserved verbatim by tooling
+#   * x-forbid-placeholder fields reject REPLACE-ME/TBD/TODO/CHANGE-ME/???
+#     values with E-PLACEHOLDER (unedited starters cannot validate)
+#   * x-link fields are resolved by the bundle link pass (E-LINK-UNRESOLVED)
+# ==========================================================================
+$id: 'sdlc/def-of-ready@1'
+title: 'Definition-of-ready checklist consumed by the G1 input gate'
+x-instance-path: '.sdlc-core/def-of-ready.yaml'
+x-consumers:
+  - 'G1 preflight (`g1 preflight <spec> --kind K`): iterates kinds[K].requires[]; each failing check id+description becomes a named gap in the block report'
+  - 'G1 config resolution: kinds[K].sufficiency_judge.rubric -> resolve_rubric() admissibility (engine KAPPA_FLOOR); inadmissible => judge skipped loudly, deterministic checks still run'
+  - 'reporting six-gate strip: owner rendered on every G1 block'
+x-changelog:
+  - '@1 2026-07: initial shape (E1.7 proposed-v1)'
+
+type: object
+additionalProperties: false
+required:
+  - schema
+  - owner
+  - kinds
+properties:
+  schema:
+    const: 'sdlc/def-of-ready@1'
+    x-consumer: 'resolve_instance() tag dispatch; fail-closed on unknown major (E-SCHEMA-TAG)'
+  owner:
+    type: string
+    pattern: '^@[A-Za-z0-9_./-]+$'
+    x-forbid-placeholder: true
+    x-consumer: 'reporting: rendered on every G1 block so the blocked author knows who owns the checklist'
+  kinds:
+    type: object
+    minProperties: 1
+    description: 'Work-item kind -> checklist. Keys are the G1 CLI --kind values; the full-stack kind is named application per the plan.'
+    propertyNames:
+      pattern: '^[a-z][a-z0-9_]*$'
+    additionalProperties:
+      $ref: '#/$defs/kind'
+    x-consumer: 'G1 by-kind lookup (--kind application)'
+
+$defs:
+  kind:
+    type: object
+    additionalProperties: false
+    required:
+      - requires
+    properties:
+      description:
+        type: string
+        x-consumer: 'G1 block-report header line'
+      requires:
+        type: array
+        minItems: 1
+        x-unique-field: 'id'
+        items:
+          $ref: '#/$defs/requirement'
+        x-consumer: 'G1 preflight iteration; minItems 1 kills the vacuous checklist'
+      sufficiency_judge:
+        type: object
+        additionalProperties: false
+        required:
+          - rubric
+        properties:
+          rubric:
+            type: string
+            pattern: '^[a-z][a-z0-9_-]*@[0-9]+$'
+            x-link: 'rubric'
+            x-consumer: 'G1 judge wiring via resolve_rubric(); link pass proves the rubric exists at check time'
+        x-consumer: 'G1 optional calibrated-only sufficiency judge'
+  requirement:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - description
+      - check
+      - severity
+    properties:
+      id:
+        type: string
+        pattern: '^[a-z][a-z0-9_-]*$'
+        x-consumer: 'stable gap name quoted in G1 block reports and waivers (E11.7)'
+      description:
+        type: string
+        minLength: 10
+        x-consumer: 'G1 block-report gap text'
+      severity:
+        enum:
+          - block
+          - warn
+        x-consumer: 'G1 exit posture: block = deterministic hard-block, warn = advisory line'
+      check:
+        type: object
+        additionalProperties: false
+        required:
+          - type
+        properties:
+          type:
+            enum:
+              - section_present
+              - field_present
+              - pattern_present
+            x-consumer: 'G1 evaluator dispatch: one function per value; closed set, new evaluator = ADR + schema bump'
+          heading:
+            type: string
+            minLength: 1
+            x-consumer: 'section_present evaluator argument'
+          path:
+            type: string
+            minLength: 1
+            x-consumer: 'field_present evaluator argument (front-matter path)'
+          pattern:
+            type: string
+            minLength: 1
+            x-consumer: 'pattern_present evaluator argument (regex over spec text)'
+        allOf:
+          - if:
+              properties:
+                type:
+                  const: section_present
+            then:
+              required:
+                - heading
+          - if:
+              properties:
+                type:
+                  const: field_present
+            then:
+              required:
+                - path
+          - if:
+              properties:
+                type:
+                  const: pattern_present
+            then:
+              required:
+                - pattern
+        x-consumer: 'G1 deterministic preflight'
+
+x-valid-cases:
+  - name: minimal-application-kind
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: '@org/delivery-leads'
+      kinds:
+        application:
+          requires:
+            - id: acceptance-criteria
+              description: 'Spec has an Acceptance Criteria section.'
+              severity: block
+              check:
+                type: section_present
+                heading: 'Acceptance Criteria'
+            - id: rollback-noted
+              description: 'Spec mentions a rollback or kill-switch plan.'
+              severity: warn
+              check:
+                type: pattern_present
+                pattern: '(?i)rollback|kill.?switch'
+          sufficiency_judge:
+            rubric: 'spec-sufficiency@1'
+    bundle:
+      rubrics:
+        - id: spec-sufficiency
+          version: 1
+
+x-anti-cases:
+  - name: kind-with-empty-checklist
+    must_fail_with: E-MIN-ITEMS
+    note: 'A kind that requires nothing always passes -- vacuous green.'
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: '@org/delivery-leads'
+      kinds:
+        application:
+          requires: []
+  - name: unknown-check-evaluator
+    must_fail_with: E-ENUM
+    note: 'G1 would silently skip a check type it has no function for.'
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: '@org/delivery-leads'
+      kinds:
+        application:
+          requires:
+            - id: vibes
+              description: 'Spec feels sufficiently ready overall.'
+              severity: block
+              check:
+                type: llm_vibes
+  - name: duplicate-gap-ids
+    must_fail_with: E-UNIQUE-FIELD
+    note: 'Named gaps must be unambiguous in the block report.'
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: '@org/delivery-leads'
+      kinds:
+        application:
+          requires:
+            - id: acceptance-criteria
+              description: 'Spec has an Acceptance Criteria section.'
+              severity: block
+              check:
+                type: section_present
+                heading: 'Acceptance Criteria'
+            - id: acceptance-criteria
+              description: 'Spec has a Success Metrics section.'
+              severity: block
+              check:
+                type: section_present
+                heading: 'Success Metrics'
+  - name: judge-ref-without-version
+    must_fail_with: E-PATTERN
+    note: 'Drift binding is per rubric version; an unversioned ref cannot be admissibility-checked.'
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: '@org/delivery-leads'
+      kinds:
+        application:
+          requires:
+            - id: acceptance-criteria
+              description: 'Spec has an Acceptance Criteria section.'
+              severity: block
+              check:
+                type: section_present
+                heading: 'Acceptance Criteria'
+          sufficiency_judge:
+            rubric: 'spec-sufficiency'
+  - name: dangling-rubric-ref
+    must_fail_with: E-LINK-UNRESOLVED
+    note: 'Link pass: rubric ref must resolve in the bundle rubric registry; bundle: is the harness fixture context (empty registry here).'
+    bundle:
+      rubrics: []
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: '@org/delivery-leads'
+      kinds:
+        application:
+          requires:
+            - id: acceptance-criteria
+              description: 'Spec has an Acceptance Criteria section.'
+              severity: block
+              check:
+                type: section_present
+                heading: 'Acceptance Criteria'
+          sufficiency_judge:
+            rubric: 'ghost-rubric@3'
+  - name: unedited-starter-owner
+    must_fail_with: E-PLACEHOLDER
+    note: 'Copy-paste-and-forget cannot validate; the shipped starter fails until edited.'
+    instance:
+      schema: 'sdlc/def-of-ready@1'
+      owner: 'REPLACE-ME'
+      kinds:
+        application:
+          requires:
+            - id: acceptance-criteria
+              description: 'Spec has an Acceptance Criteria section.'
+              severity: block
+              check:
+                type: section_present
+                heading: 'Acceptance Criteria'

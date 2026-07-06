@@ -1,0 +1,313 @@
+# ==========================================================================
+# architecture-contract.schema.yaml -- SHAPE ONLY (engine layer, E13.6).
+# Instance: architecture.yaml at the ADOPTER repo root (repo-specific values,
+# not org overlay content -- the one E1.7 instance outside .sdlc-core/).
+# Generated-then-ratified: CK suggests from the observed import graph;
+# a human ratifies. Never hand-authored upfront.
+# ==========================================================================
+$id: 'sdlc/architecture-contract@1'
+title: 'Declared architecture + concern ownership (CK contract, E13.6)'
+x-instance-path: 'architecture.yaml (adopter repo root)'
+x-consumers:
+  - 'CK layering policy: module->layer membership via layers[].modules globs; edge L1->L2 allowed iff L2 in layers[L1].may_import AND not matched by forbidden[] (deny wins); violations cite forbidden[].rationale as evidence'
+  - 'CK independence check: no import path in either direction between each pair'
+  - 'CK production-reachability deadness (E13.5): seeded from entrypoints[]; unreachable modules judged by orphans.policy; orphans.allow exempts plugin/codegen surfaces'
+  - 'E13.5 CK-CONCEPT-DUPLICATION + E13.0c reuse injector: concerns map answers where concern X lives before a Write creates a twin'
+  - 'CK posture: status==suggested => all architecture findings warn-only regardless of tier; ratified => tier posture applies'
+  - 'link pass: forbidden/independence names resolve to declared layers; may_import graph must be a DAG (E-LINK-CYCLE); concerns[].module must match some layer glob (loader)'
+x-changelog:
+  - '@1 2026-07: initial shape (E13.6 riding E1.7; ratified=>signer conditional added)'
+
+type: object
+additionalProperties: false
+required:
+  - schema
+  - status
+  - layers
+  - entrypoints
+properties:
+  schema:
+    const: 'sdlc/architecture-contract@1'
+    x-consumer: 'resolve_instance() tag dispatch'
+  status:
+    enum:
+      - suggested
+      - ratified
+    x-consumer: 'CK severity resolution: suggested = warn-only by construction; ratified = tier posture applies'
+  ratified_by:
+    type: string
+    pattern: '^@[A-Za-z0-9_./-]+$'
+    x-consumer: 'audit trail: WHO accepted the contract (required iff ratified)'
+  ratified_at:
+    type: string
+    pattern: '^\d{4}-\d{2}-\d{2}$'
+    x-consumer: 'drift-review staleness; required iff ratified'
+  generated_by:
+    type: string
+    minLength: 1
+    description: 'Tool+version that generated the suggestion, e.g. cathedral-keeper@0.5.0.'
+    x-consumer: 'ck architecture suggest re-run diffs suggestion drift since ratification'
+  layers:
+    type: array
+    minItems: 1
+    x-unique-field: 'name'
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - modules
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z][a-z0-9_-]*$'
+          x-consumer: 'layer namespace for may_import/forbidden/independence resolution (link pass)'
+        modules:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+          x-consumer: 'CK import-graph node -> layer membership globs; minItems 1 kills memberless layers'
+        may_import:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            x-link: 'layer'
+          description: 'Layer names this layer may import from. ABSENT = imports nothing outside itself (deny by default).'
+          x-consumer: 'CK allowed-edge set lookup; link pass DAG check (E-LINK-CYCLE)'
+    x-consumer: 'CK layering gate'
+  forbidden:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - from
+        - to
+        - rationale
+      properties:
+        from:
+          type: string
+          x-link: 'layer'
+          x-consumer: 'banned-edge source layer'
+        to:
+          type: string
+          x-link: 'layer'
+          x-consumer: 'banned-edge target layer'
+        rationale:
+          type: string
+          minLength: 10
+          x-consumer: 'quoted verbatim in the CK finding (QG _rationale convention made structural)'
+    x-consumer: 'CK forbidden-edge gate (deny wins over may_import)'
+  independence:
+    type: array
+    items:
+      type: array
+      minItems: 2
+      maxItems: 2
+      items:
+        type: string
+        x-link: 'layer'
+    description: 'Pairs of layer names with no import path in either direction.'
+    x-consumer: 'CK independence gate (pairwise; triples are ambiguous)'
+  orphans:
+    type: object
+    additionalProperties: false
+    required:
+      - policy
+    properties:
+      policy:
+        enum:
+          - block
+          - warn
+        x-consumer: 'E13.5 deadness gate mode (explicit decision, never a silent default)'
+      allow:
+        type: array
+        items:
+          type: string
+        x-consumer: 'orphan-detection exemption globs (plugins, codegen, migrations -- the look-dead-but-alive set)'
+    x-consumer: 'CK orphan gate'
+  concerns:
+    type: object
+    propertyNames:
+      pattern: '^[a-z][a-z0-9_-]*$'
+    additionalProperties:
+      type: object
+      additionalProperties: false
+      required:
+        - module
+      properties:
+        module:
+          type: string
+          minLength: 1
+          x-consumer: 'the single owning module the dispersion check and E13.0c reuse injector quote'
+        keywords:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+          x-consumer: 'matching hints for concept-duplication heuristic + reuse injector'
+    x-consumer: 'concern -> owning-module map (E13.6)'
+  entrypoints:
+    type: array
+    minItems: 1
+    items:
+      type: string
+      minLength: 1
+    description: 'Production reachability roots (CLIs, __main__, WSGI apps, exported APIs).'
+    x-consumer: 'E13.5 production-reachability seeding (fixes the test-imports-mask-deadness blind spot)'
+
+allOf:
+  - if:
+      properties:
+        status:
+          const: ratified
+    then:
+      required:
+        - ratified_by
+        - ratified_at
+
+x-valid-cases:
+  - name: suggested-minimal
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: suggested
+      generated_by: 'cathedral-keeper@0.5.0'
+      layers:
+        - name: cli
+          modules:
+            - 'app/cli/*'
+          may_import:
+            - core
+        - name: core
+          modules:
+            - 'app/core/*'
+      entrypoints:
+        - 'app/cli/main.py'
+  - name: ratified-with-contracts
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: ratified
+      ratified_by: '@org/arch-owners'
+      ratified_at: '2026-07-15'
+      generated_by: 'cathedral-keeper@0.5.0'
+      layers:
+        - name: api
+          modules:
+            - 'svc/api/*'
+          may_import:
+            - domain
+        - name: domain
+          modules:
+            - 'svc/domain/*'
+        - name: adapters
+          modules:
+            - 'svc/adapters/*'
+          may_import:
+            - domain
+      forbidden:
+        - from: domain
+          to: adapters
+          rationale: 'Domain stays IO-free; adapters depend inward only (ports-and-adapters).'
+      independence:
+        - - api
+          - adapters
+      orphans:
+        policy: block
+        allow:
+          - 'svc/adapters/plugins/*'
+      concerns:
+        retry_policy:
+          module: 'svc/domain/retry.py'
+          keywords:
+            - retry
+            - backoff
+      entrypoints:
+        - 'svc/api/app.py'
+
+x-anti-cases:
+  - name: ratified-without-signer
+    must_fail_with: E-REQUIRED
+    note: 'FIXED defect from the base design: the ratified=>signer if/then now exists, so unsigned ratification is structurally invalid (was validating clean).'
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: ratified
+      layers:
+        - name: core
+          modules:
+            - 'app/core/*'
+      entrypoints:
+        - 'app/cli/main.py'
+  - name: ratified-boolean-selfreport
+    must_fail_with: E-UNKNOWN-FIELD
+    note: 'Pinned self-report anti-case: ratification identifies WHO; an anonymous boolean is self-report.'
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: suggested
+      ratified: true
+      layers:
+        - name: core
+          modules:
+            - 'app/core/*'
+      entrypoints:
+        - 'app/cli/main.py'
+  - name: forbidden-edge-without-rationale
+    must_fail_with: E-REQUIRED
+    note: 'An unexplained ban invites deletion; rationale is the finding evidence.'
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: suggested
+      layers:
+        - name: core
+          modules:
+            - 'app/core/*'
+        - name: cli
+          modules:
+            - 'app/cli/*'
+      forbidden:
+        - from: core
+          to: cli
+      entrypoints:
+        - 'app/cli/main.py'
+  - name: may-import-cycle
+    must_fail_with: E-LINK-CYCLE
+    note: 'Grafted DAG check: mutually-importing layers are layering in name only.'
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: suggested
+      layers:
+        - name: a
+          modules:
+            - 'a/*'
+          may_import:
+            - b
+        - name: b
+          modules:
+            - 'b/*'
+          may_import:
+            - a
+      entrypoints:
+        - 'a/main.py'
+  - name: layer-with-no-modules
+    must_fail_with: E-MIN-ITEMS
+    note: 'A memberless layer makes every check against it vacuous.'
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: suggested
+      layers:
+        - name: core
+          modules: []
+      entrypoints:
+        - 'app/cli/main.py'
+  - name: no-entrypoints
+    must_fail_with: E-REQUIRED
+    note: 'Without reachability roots, deadness detection is unseeded.'
+    instance:
+      schema: 'sdlc/architecture-contract@1'
+      status: suggested
+      layers:
+        - name: core
+          modules:
+            - 'app/core/*'

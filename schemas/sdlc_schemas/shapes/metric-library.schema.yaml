@@ -1,0 +1,220 @@
+# ==========================================================================
+# metric-library.schema.yaml -- SHAPE ONLY (engine layer).
+# VALUES live in .sdlc-core/metric-library.yaml.
+# Field set {grain, source, owner, tolerance} fixed by E12.1 (plan:232).
+# ==========================================================================
+$id: 'sdlc/metric-library@1'
+title: 'Metric contract library (semantic layer) for G4/G2/G5'
+x-instance-path: '.sdlc-core/metric-library.yaml'
+x-consumers:
+  - 'G4 data-verify reconciliation (`rv data reconcile --metric <id>`): source.system names the adapter, source.ref locates the authoritative value, tolerance bounds the compare -- pack code carries no numeric literal (Loop-2 grep-gate)'
+  - 'G4 uniqueness/completeness: grain is the declared uniqueness key; duplicate rows at grain -> finding; grain [] => uniqueness reported skipped, loudly'
+  - 'G2 metric-contract completeness (E12.1): a metric id referenced by a report artifact with no entry here blocks (membership query)'
+  - 'G5 eval: golden case expected.tolerance_metric link-resolves here -- one tolerance shared by eval and runtime-verify'
+  - 'reporting: entry owner rendered on every failing metric finding'
+x-changelog:
+  - '@1 2026-07: initial shape (E1.7 + E12.1 field set)'
+
+type: object
+additionalProperties: false
+required:
+  - schema
+  - owner
+  - metrics
+properties:
+  schema:
+    const: 'sdlc/metric-library@1'
+    x-consumer: 'resolve_instance() tag dispatch'
+  owner:
+    type: string
+    pattern: '^@[A-Za-z0-9_./-]+$'
+    x-forbid-placeholder: true
+    x-consumer: 'reporting: library-level fallback contact'
+  metrics:
+    type: object
+    minProperties: 1
+    description: 'Metric id -> contract. snake_case ids appear in SQL group-bys and case files.'
+    propertyNames:
+      pattern: '^[a-z][a-z0-9_]*$'
+    additionalProperties:
+      $ref: '#/$defs/metric'
+    x-consumer: 'G4 reconcile --metric lookup; G2 membership check; link-pass metric namespace (keys are the x-link targets)'
+
+$defs:
+  metric:
+    type: object
+    additionalProperties: false
+    required:
+      - grain
+      - source
+      - owner
+      - tolerance
+    properties:
+      description:
+        type: string
+        x-consumer: 'PR review + report tooltip (the semantic contract text disputes resolve against)'
+      grain:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*$'
+        description: 'Dimension columns defining uniqueness. [] is legal and means scalar metric; uniqueness check skipped AND reported skipped.'
+        x-consumer: 'G4 data-pack uniqueness/duplicate check (mechanical GROUP BY key)'
+      source:
+        type: object
+        additionalProperties: false
+        required:
+          - system
+          - ref
+        properties:
+          system:
+            type: string
+            pattern: '^[a-z][a-z0-9_-]*$'
+            x-consumer: 'runtime-verify adapter registry resolution (D3 decides the first adapter)'
+          ref:
+            type: string
+            minLength: 1
+            x-forbid-placeholder: true
+            x-consumer: 'adapter-interpreted locator of the authoritative value'
+        x-consumer: 'G4 reconciliation target binding'
+      owner:
+        type: string
+        pattern: '^@[A-Za-z0-9_./-]+$'
+        x-consumer: 'page target on reconciliation breach; reporting accountability column'
+      tolerance:
+        type: object
+        additionalProperties: false
+        required:
+          - type
+          - value
+        properties:
+          type:
+            enum:
+              - absolute
+              - relative
+            x-consumer: 'G4/G5 comparator dispatch (abs diff vs fractional diff)'
+          value:
+            type: number
+            minimum: 0
+            description: '0 = exact match. relative value is a fraction (0.01 = 1%).'
+            x-consumer: 'the single compare bound shared by G4 reconciliation and G5 golden numeric compares (grep-gate: the only legal home of this number)'
+        x-consumer: 'G4 reconcile compare; G5 tolerance_metric resolution'
+
+x-valid-cases:
+  - name: minimal-two-metrics
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics:
+        revenue_total:
+          description: 'Recognised revenue in reporting currency.'
+          grain:
+            - date
+            - brand
+          source:
+            system: warehouse
+            ref: 'analytics.fct_revenue.revenue_usd'
+          owner: '@org/finance-data'
+          tolerance:
+            type: relative
+            value: 0.005
+        active_users:
+          grain: []
+          source:
+            system: warehouse
+            ref: 'analytics.fct_usage.active_users'
+          owner: '@org/product-analytics'
+          tolerance:
+            type: absolute
+            value: 0
+          _rationale: 'Scalar metric; uniqueness intentionally skipped (annotation keys are legal in instances).'
+
+x-anti-cases:
+  - name: metric-without-tolerance
+    must_fail_with: E-REQUIRED
+    note: 'Reconciliation would have no compare rule -- the number could never block.'
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics:
+        revenue_total:
+          grain:
+            - date
+          source:
+            system: warehouse
+            ref: 'analytics.fct_revenue.revenue_usd'
+          owner: '@org/finance-data'
+  - name: tolerance-type-percent
+    must_fail_with: E-ENUM
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics:
+        revenue_total:
+          grain:
+            - date
+          source:
+            system: warehouse
+            ref: 'analytics.fct_revenue.revenue_usd'
+          owner: '@org/finance-data'
+          tolerance:
+            type: percent
+            value: 1
+  - name: negative-tolerance
+    must_fail_with: E-RANGE
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics:
+        revenue_total:
+          grain:
+            - date
+          source:
+            system: warehouse
+            ref: 'analytics.fct_revenue.revenue_usd'
+          owner: '@org/finance-data'
+          tolerance:
+            type: absolute
+            value: -1
+  - name: sql-embedded-in-entry
+    must_fail_with: E-UNKNOWN-FIELD
+    note: 'Anti-bloat: entries are contracts, not query stores; sql: has no gate consumer. (_sql_note: would be the legal annotation form.)'
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics:
+        revenue_total:
+          grain:
+            - date
+          source:
+            system: warehouse
+            ref: 'analytics.fct_revenue.revenue_usd'
+          owner: '@org/finance-data'
+          tolerance:
+            type: absolute
+            value: 0
+          sql: 'SELECT SUM(revenue) FROM fct_revenue'
+  - name: empty-library
+    must_fail_with: E-MIN-PROPS
+    note: 'An empty library passes every membership check vacuously.'
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics: {}
+  - name: placeholder-source-ref
+    must_fail_with: E-PLACEHOLDER
+    instance:
+      schema: 'sdlc/metric-library@1'
+      owner: '@org/analytics-platform'
+      metrics:
+        revenue_total:
+          grain:
+            - date
+          source:
+            system: warehouse
+            ref: 'REPLACE-ME'
+          owner: '@org/finance-data'
+          tolerance:
+            type: absolute
+            value: 0

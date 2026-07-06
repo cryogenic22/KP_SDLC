@@ -11,10 +11,17 @@ license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+# PyYAML is a DEV-only oracle: the miniyaml strict-subset loader is
+# differentially tested against yaml.safe_load over every shipped document
+# (schemas/tests/test_schemas_e17.py test h). Runtime stays zero-dependency.
+dev = ["PyYAML>=6"]
+
 [project.scripts]
 qg = "quality_gate:main"
 ck = "cathedral_keeper.cli:main"
 sdlc = "sdlc_init.cli:main"
+sdlc-schemas = "sdlc_schemas.cli:main"
 
 # Explicit mapping: component homes keep their product-facing hyphenated names
 # (quality-gate/, cathedral-keeper/) while the importable packages inside them
@@ -31,9 +38,23 @@ packages = [
     "cathedral_keeper.policies",
     "cathedral_keeper.integrations",
     "sdlc_init",
+    "sdlc_schemas",
 ]
 
 [tool.setuptools.package-dir]
 "" = "quality-gate"
 cathedral_keeper = "cathedral-keeper/cathedral_keeper"
 sdlc_init = "sdlc-init/sdlc_init"
+sdlc_schemas = "schemas/sdlc_schemas"
+
+# The six SHAPE documents, the failing starters, and any fixtures ship as
+# sdlc_schemas package data so a born-gated repo reads shapes from the
+# installed engine (importlib.resources) and instances from its own overlay.
+[tool.setuptools.package-data]
+sdlc_schemas = [
+    "shapes/*.yaml",
+    "shapes/*.json",
+    "starters/*.yaml",
+    "starters/rubrics/*.yaml",
+    "fixtures/*",
+]

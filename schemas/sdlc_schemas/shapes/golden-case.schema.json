@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sdlc/golden-case@1",
+  "title": "Eval corpus case (one file per case; lifecycle-staged requiredness)",
+  "$comment": "SHAPE ONLY (engine). Instances: .sdlc-core/corpus/**/*.case.json. Dialect: the pinned sdlc_schemas keyword subset -- if/then conditions over 1-2 properties with const/enum values. Staging: capture requires only {schema,id,status,lineage,input}; annotated/active/retired additionally require {kind,determinism} (classified before AUTHORING = before annotation); active additionally requires the kind payload. Only active cases execute.",
+  "x-instance-path": ".sdlc-core/corpus/**/*.case.json",
+  "x-consumers": [
+    "EE.1 loader (ee run): validates every case at load; ANY invalid case aborts the run loudly; failures[].id in latest.json is case.id (eval.yml.tmpl:75-88 reads it verbatim)",
+    "scope filter: --scope harness-only runs determinism==deterministic only; skipped judged/stochastic cases are NAMED in the report (Loop-4 exit)",
+    "EE.7: judge.rubric -> resolve_rubric() admissibility; inadmissible => case skips loudly",
+    "EE.12 stats: sampling.n/pass_at for stochastic cases (default n from standards checks[eval.stochastic_runs]); deterministic + anti_case flips always fail (derived from determinism+kind)",
+    "EE.13 lifecycle: status drives the run set; corpus health = anti-case ratio, lineage mix, status counts",
+    "EE.5 trace runner: trace.checks map 1:1 to the six shipped trace check implementations",
+    "release gate: an anti_case whose payload evaluation PASSES fails the corpus release",
+    "link pass: id corpus-unique (E-LINK-DUPLICATE); expected.tolerance_metric -> metric namespace; judge.rubric -> rubric namespace; rubric probe_tag -> tags of active anti_case cases"
+  ],
+  "x-changelog": ["@1 2026-07: initial shape (E1.7 proposed-v1; lifecycle staging + loadable anti_case payload)"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "status", "lineage", "input"],
+  "properties": {
+    "schema": { "const": "sdlc/golden-case@1", "x-consumer": "resolve_instance() tag dispatch" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$", "x-consumer": "failures[].id in latest.json + PR comment; corpus-unique via link pass" },
+    "kind": { "enum": ["assertion", "golden", "property", "scenario", "trace", "judged", "anti_case"], "x-consumer": "EE runner dispatch; CLOSED taxonomy (plan 6.1) -- new kind needs an ADR + schema bump" },
+    "determinism": { "enum": ["deterministic", "stochastic"], "x-consumer": "scope filter; flip policy (deterministic flips always fail); sampling legality. Required from annotated: classified before authoring, structurally" },
+    "status": { "enum": ["captured", "triaged", "annotated", "active", "retired"], "x-consumer": "EE.13 lifecycle run-set selection + health metrics; staging pivot for requiredness" },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route"],
+      "properties": {
+        "route": { "enum": ["authored", "production_breach", "pr_dispute", "red_team", "trace_anomaly"], "x-consumer": "corpus health lineage-mix metric; capture routes" },
+        "ref": { "type": "string", "x-consumer": "triage back-link (incident/PR id) for non-authored routes" }
+      },
+      "x-consumer": "EE.13 capture + health"
+    },
+    "tags": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" }, "x-consumer": "selection labels; rubric meta_eval.probe_tag resolves against tags of active anti_case cases (link pass)" },
+    "description": { "type": "string", "x-consumer": "report failure context" },
+    "input": { "type": "object", "x-consumer": "kind-interpreted input envelope; each kind runner validates its own input contract at load" },
+    "sampling": { "$ref": "#/$defs/sampling" },
+    "checks": { "$ref": "#/$defs/checks" },
+    "expected": { "$ref": "#/$defs/expected" },
+    "property": { "$ref": "#/$defs/property" },
+    "steps": { "$ref": "#/$defs/steps" },
+    "trace": { "$ref": "#/$defs/trace" },
+    "judge": { "$ref": "#/$defs/judge" },
+    "target_kind": { "enum": ["assertion", "golden", "property", "scenario", "trace", "judged"], "x-consumer": "anti_case only: the kind whose evaluation must FAIL" },
+    "expected_verdict": { "const": "fail", "x-consumer": "release gate inversion: payload evaluation passing fails the corpus release" },
+    "payload": { "$ref": "#/$defs/payload" }
+  },
+  "allOf": [
+    { "if": { "properties": { "status": { "enum": ["annotated", "active", "retired"] } }, "required": ["status"] },
+      "then": { "required": ["kind", "determinism"] } },
+    { "if": { "properties": { "kind": { "const": "judged" } }, "required": ["kind"] },
+      "then": { "properties": { "determinism": { "const": "stochastic" } } } },
+    { "if": { "properties": { "determinism": { "const": "deterministic" } }, "required": ["determinism"] },
+      "then": { "properties": { "sampling": false } } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "assertion" } }, "required": ["status", "kind"] },
+      "then": { "required": ["checks"] } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "golden" } }, "required": ["status", "kind"] },
+      "then": { "required": ["expected"] } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "property" } }, "required": ["status", "kind"] },
+      "then": { "required": ["property"] } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "scenario" } }, "required": ["status", "kind"] },
+      "then": { "required": ["steps", "checks"] } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "trace" } }, "required": ["status", "kind"] },
+      "then": { "required": ["trace"] } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "judged" } }, "required": ["status", "kind"] },
+      "then": { "required": ["judge"] } },
+    { "if": { "properties": { "status": { "const": "active" }, "kind": { "const": "anti_case" } }, "required": ["status", "kind"] },
+      "then": { "required": ["target_kind", "expected_verdict", "payload"] } },
+    { "if": { "properties": { "target_kind": { "const": "assertion" } }, "required": ["target_kind"] },
+      "then": { "properties": { "payload": { "required": ["checks"] } } } },
+    { "if": { "properties": { "target_kind": { "const": "golden" } }, "required": ["target_kind"] },
+      "then": { "properties": { "payload": { "required": ["expected"] } } } },
+    { "if": { "properties": { "target_kind": { "const": "property" } }, "required": ["target_kind"] },
+      "then": { "properties": { "payload": { "required": ["property"] } } } },
+    { "if": { "properties": { "target_kind": { "const": "scenario" } }, "required": ["target_kind"] },
+      "then": { "properties": { "payload": { "required": ["steps", "checks"] } } } },
+    { "if": { "properties": { "target_kind": { "const": "trace" } }, "required": ["target_kind"] },
+      "then": { "properties": { "payload": { "required": ["trace"] } } } },
+    { "if": { "properties": { "target_kind": { "const": "judged" } }, "required": ["target_kind"] },
+      "then": { "properties": { "payload": { "required": ["judge"] } } } }
+  ],
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher"],
+      "properties": {
+        "matcher": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-consumer": "matcher registry lookup at load (seeded from eval_runner.md built-ins); unknown matcher fails loudly" },
+        "args": { "type": "object", "x-consumer": "matcher-specific params, validated by the matcher at registration" }
+      }
+    },
+    "checks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/check" }, "x-consumer": "assertion/scenario verdict checks; minItems 1 kills check-nothing cases" },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "x-consumer": "golden artefact path relative to corpus root" },
+        "tolerance_metric": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-link": "metric", "x-consumer": "metric-library id; numeric golden compares reuse metrics[<id>].tolerance so G4 and G5 share one number; link pass -> E-LINK-UNRESOLVED" }
+      },
+      "x-consumer": "golden runner comparison target"
+    },
+    "property": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matcher"],
+      "properties": {
+        "matcher": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-consumer": "property registry lookup" },
+        "args": { "type": "object", "x-consumer": "property params" },
+        "seed": { "type": "integer", "x-consumer": "fixes generation for deterministic property cases" }
+      },
+      "x-consumer": "property runner"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string", "minLength": 1, "x-consumer": "scenario driver step" },
+          "args": { "type": "object", "x-consumer": "step params" }
+        }
+      },
+      "x-consumer": "scenario runner"
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "checks"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "x-consumer": "captured agent-session trace fixture path" },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["TRACE-CONFLICT-HALT", "TRACE-SCOPE-CONSERVATION", "TRACE-SURFACE-VIOLATION", "TRACE-ASK-RATIO", "TRACE-VACUOUS-TEST", "TRACE-BUDGET"] },
+          "x-consumer": "the six shipped trace check implementations (plan 6.1, closed)"
+        }
+      },
+      "x-consumer": "EE.5 trace runner"
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rubric"],
+      "properties": {
+        "rubric": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*@[0-9]+$", "x-link": "rubric", "x-consumer": "resolve_rubric() admissibility; link pass proves the (id,version) exists" },
+        "threshold": { "type": "number", "x-consumer": "upward-only override of rubric theta (loader-enforced)" }
+      },
+      "x-consumer": "judged runner"
+    },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 2, "x-consumer": "EE.12 n-run sampling; default from standards checks[eval.stochastic_runs]" },
+        "pass_at": { "type": "integer", "minimum": 1, "x-consumer": "EE.12 pass@k verdict" }
+      },
+      "x-consumer": "EE.12 stochastic-only override; forbidden on deterministic cases"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input": { "type": "object", "x-consumer": "payload input override; defaults to the parent case input" },
+        "checks": { "$ref": "#/$defs/checks" },
+        "expected": { "$ref": "#/$defs/expected" },
+        "property": { "$ref": "#/$defs/property" },
+        "steps": { "$ref": "#/$defs/steps" },
+        "trace": { "$ref": "#/$defs/trace" },
+        "judge": { "$ref": "#/$defs/judge" }
+      },
+      "x-consumer": "anti_case body: ONLY the target kind's evaluation fields (per-target_kind required via allOf). Loader synthesizes an envelope from the parent case (id '<parent>.payload', kind=target_kind, parent determinism/status/lineage, payload.input or parent input) and re-validates; the engine passes the anti_case iff evaluating that synthesized case FAILS"
+    }
+  },
+  "x-valid-cases": [
+    {
+      "name": "minimal-active-deterministic-assertion",
+      "instance": {
+        "schema": "sdlc/golden-case@1",
+        "id": "report-has-no-instruction-leakage",
+        "kind": "assertion",
+        "determinism": "deterministic",
+        "status": "active",
+        "lineage": { "route": "authored" },
+        "input": { "fixture": "fixtures/report_v3.md" },
+        "checks": [ { "matcher": "excludes", "args": { "patterns": ["as an ai", "system prompt"] } } ]
+      }
+    },
+    {
+      "name": "cheap-captured-breach-blob",
+      "note": "Lifecycle staging: capture requires no kind/determinism/payload -- one cheap blob from a production breach (EE.13 economics).",
+      "instance": {
+        "schema": "sdlc/golden-case@1",
+        "id": "breach-2026-07-04-revenue-report",
+        "status": "captured",
+        "lineage": { "route": "production_breach", "ref": "INC-1142" },
+        "input": { "raw": "report omitted the Risks section entirely" }
+      }
+    },
+    {
+      "name": "anti-case-vacuous-output",
+      "note": "Loadable under the payload rule: payload carries exactly the target kind's evaluation fields.",
+      "instance": {
+        "schema": "sdlc/golden-case@1",
+        "id": "anti-vacuous-empty-report",
+        "kind": "anti_case",
+        "determinism": "deterministic",
+        "status": "active",
+        "lineage": { "route": "red_team" },
+        "tags": ["spec-sufficiency-probes"],
+        "input": { "fixture": "fixtures/empty_report.md" },
+        "target_kind": "assertion",
+        "expected_verdict": "fail",
+        "payload": { "checks": [ { "matcher": "sections_present", "args": { "headings": ["Findings", "Method"] } } ] }
+      }
+    }
+  ],
+  "x-anti-cases": [
+    {
+      "name": "active-golden-missing-expected",
+      "must_fail_with": "E-REQUIRED",
+      "note": "The inventory's red-test twin: an active golden case with no expected output must fail validation.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "golden-report-shape", "kind": "golden", "determinism": "deterministic", "status": "active", "lineage": { "route": "authored" }, "input": { "fixture": "fixtures/report_v3.md" } }
+    },
+    {
+      "name": "new-kind-without-adr",
+      "must_fail_with": "E-ENUM",
+      "note": "Taxonomy is closed; a new kind needs an ADR + schema bump, not a corpus edit.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "sneaky-new-kind", "kind": "regression", "determinism": "deterministic", "status": "active", "lineage": { "route": "authored" }, "input": {} }
+    },
+    {
+      "name": "judged-claiming-deterministic",
+      "must_fail_with": "E-CONST",
+      "note": "An LLM judge is never deterministic; classification discipline made structural.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "judged-but-deterministic", "kind": "judged", "determinism": "deterministic", "status": "active", "lineage": { "route": "authored" }, "input": {}, "judge": { "rubric": "narrative-quality@1" } }
+    },
+    {
+      "name": "active-case-unclassified",
+      "must_fail_with": "E-REQUIRED",
+      "note": "Staging graft: from annotated onward, determinism is required -- classified before authoring.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "never-classified", "kind": "assertion", "status": "active", "lineage": { "route": "authored" }, "input": {}, "checks": [ { "matcher": "excludes" } ] }
+    },
+    {
+      "name": "assertion-with-empty-checks",
+      "must_fail_with": "E-MIN-ITEMS",
+      "note": "A case that checks nothing always passes -- vacuous green.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "checks-nothing", "kind": "assertion", "determinism": "deterministic", "status": "active", "lineage": { "route": "authored" }, "input": {}, "checks": [] }
+    },
+    {
+      "name": "anti-case-expecting-pass",
+      "must_fail_with": "E-CONST",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "anti-case-gone-soft", "kind": "anti_case", "determinism": "deterministic", "status": "active", "lineage": { "route": "red_team" }, "input": {}, "target_kind": "assertion", "expected_verdict": "pass", "payload": { "checks": [ { "matcher": "excludes" } ] } }
+    },
+    {
+      "name": "deterministic-case-with-sampling",
+      "must_fail_with": "E-FORBIDDEN",
+      "note": "Resampling a deterministic case burns budget and masks misclassification.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "pointless-resampling", "kind": "assertion", "determinism": "deterministic", "status": "active", "lineage": { "route": "authored" }, "input": {}, "sampling": { "n": 5 }, "checks": [ { "matcher": "excludes" } ] }
+    },
+    {
+      "name": "anti-case-payload-missing-target-field",
+      "must_fail_with": "E-REQUIRED",
+      "note": "Payload must carry the target kind's evaluation fields or the release-gate inversion has nothing to run.",
+      "instance": { "schema": "sdlc/golden-case@1", "id": "anti-case-empty-payload", "kind": "anti_case", "determinism": "deterministic", "status": "active", "lineage": { "route": "red_team" }, "input": {}, "target_kind": "assertion", "expected_verdict": "fail", "payload": {} }
+    }
+  ]
+}
