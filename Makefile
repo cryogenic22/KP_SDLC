@@ -94,6 +94,7 @@ report: ## Run QG + CK and generate HTML report
 	python $(RPT_DIR)/generate_html_reports.py --root $(ROOT) --title "Quality Report"
 
 sarif: ## Run QG (audit) and output SARIF
+	@mkdir -p .quality-reports
 	python $(QG_DIR)/quality_gate.py --root $(ROOT) --mode audit --sarif .quality-reports/qg.sarif
 
 # ── Utility targets ──────────────────────────────────────────────────

@@ -163,26 +163,28 @@ def extract_sarif_upload(tmpl_text: str) -> str:
     return block
 
 
-def build_mechanical(tmpl_text: str, profile: Mapping) -> str:
-    """Assemble the engine's mechanical job from ENGINE_PROFILE + tmpl slices."""
+def _ck_step(profile: Mapping) -> str:
+    """The CK step: blocking, or masked with the dated justification."""
     if profile["CK_BLOCKING"]:
-        ck_step = (
+        return (
             "      - name: Cathedral Keeper (architecture)\n"
             f"        run: {_CK_CMD}"
         )
-    else:
-        ck_step = (
-            "      # report-only until E0.4/E0.6 land a green path: CK exits 1 on\n"
-            "      # >=high findings (236 on 2026-07-06) and is silent without\n"
-            "      # --verbose. This is the workflow's ONLY masked step; flip\n"
-            "      # ENGINE_PROFILE[\"CK_BLOCKING\"] to True (drops continue-on-error)\n"
-            "      # once the >=high findings are baselined or cleared.\n"
-            "      - name: Cathedral Keeper (architecture, report-only)\n"
-            f"        run: {_CK_CMD}\n"
-            "        continue-on-error: true"
-        )
+    return (
+        "      # report-only until E0.4/E0.6 land a green path: CK exits 1 on\n"
+        "      # >=high findings (236 on 2026-07-06) and is silent without\n"
+        "      # --verbose. This is the workflow's ONLY masked step; flip\n"
+        "      # ENGINE_PROFILE[\"CK_BLOCKING\"] to True (drops continue-on-error)\n"
+        "      # once the >=high findings are baselined or cleared.\n"
+        "      - name: Cathedral Keeper (architecture, report-only)\n"
+        f"        run: {_CK_CMD}\n"
+        "        continue-on-error: true"
+    )
 
-    steps = [
+
+def _engine_steps(tmpl_text: str, profile: Mapping) -> List[str]:
+    """The engine mechanical job's steps, in run order."""
+    return [
         (
             "      - uses: actions/checkout@v4\n"
             "        with:\n"
@@ -205,7 +207,7 @@ def build_mechanical(tmpl_text: str, profile: Mapping) -> str:
             f"      - name: {profile['QG_STEP_NAME']}\n"
             f"        run: {profile['QG_CMD']}"
         ),
-        ck_step,
+        _ck_step(profile),
         (
             "      - name: Upload CK reports\n"
             "        if: always()\n"
@@ -219,13 +221,17 @@ def build_mechanical(tmpl_text: str, profile: Mapping) -> str:
         ),
         extract_sarif_upload(tmpl_text),
     ]
+
+
+def build_mechanical(tmpl_text: str, profile: Mapping) -> str:
+    """Assemble the engine's mechanical job from ENGINE_PROFILE + tmpl slices."""
     header = (
         "  mechanical:\n"
         "    name: Mechanical guardrails\n"
         "    runs-on: ubuntu-latest\n"
         "    steps:\n"
     )
-    return header + "\n\n".join(steps)
+    return header + "\n\n".join(_engine_steps(tmpl_text, profile))
 
 
 def build_process(tmpl_text: str) -> str:
@@ -285,6 +291,30 @@ def check_sync(tmpl_text: str, workflow_text: str) -> Tuple[bool, str]:
     )
 
 
+def _diff_lines(text: str) -> List[str]:
+    """Normalized lines for the drift diff."""
+    return _normalize(text).split("\n")
+
+
+def _run_check(out: Path, tmpl_text: str, rendered: str) -> int:
+    """``--check`` mode: report sync status; print a diff and exit 1 on drift."""
+    existing = out.read_text(encoding="utf-8") if out.exists() else ""
+    in_sync, msg = check_sync(tmpl_text, existing)
+    print(f"[selfci] {msg}")
+    if in_sync:
+        return 0
+    diff = difflib.unified_diff(
+        _diff_lines(existing),
+        _diff_lines(rendered),
+        fromfile="committed .github/workflows/quality.yml",
+        tofile="rendered from quality.yml.tmpl + ENGINE_PROFILE",
+        lineterm="",
+    )
+    for line in diff:
+        print(line)
+    return 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """CLI entry point: write the workflow, or verify it with ``--check``."""
     parser = argparse.ArgumentParser(
@@ -311,20 +341,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     if args.check:
-        existing = out.read_text(encoding="utf-8") if out.exists() else ""
-        in_sync, msg = check_sync(tmpl_text, existing)
-        print(f"[selfci] {msg}")
-        if not in_sync:
-            diff = difflib.unified_diff(
-                _normalize(existing).split("\n"),
-                _normalize(rendered).split("\n"),
-                fromfile="committed .github/workflows/quality.yml",
-                tofile="rendered from quality.yml.tmpl + ENGINE_PROFILE",
-                lineterm="",
-            )
-            for line in diff:
-                print(line)
-        return 0 if in_sync else 1
+        return _run_check(out, tmpl_text, rendered)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8", newline="\n") as fh:

@@ -9,7 +9,9 @@ regenerated .github/workflows/quality.yml (never hand-edit the workflow).
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -110,6 +112,37 @@ def test_engine_paths_not_vendor_paths():
     assert "python cathedral-keeper/ck.py analyze --root . --blast-radius --verbose" in rendered
     assert "uv sync" not in rendered
     assert "python harness/selfci/gen_quality_workflow.py --check" in rendered
+
+
+def test_selfci_surface_is_qg_error_free():
+    """The self-CI code must not itself add Quality Gate errors: E0.6 commits
+    the QG baseline next, and an error born in the very PR that installs QG
+    as self-CI would be enshrined in that baseline (Clean-as-You-Code)."""
+    proc = subprocess.run(
+        [
+            sys.executable, str(_ROOT / "quality-gate" / "quality_gate.py"),
+            "--root", str(_HERE.parents[1]), "--mode", "audit", "--json",
+        ],
+        capture_output=True, encoding="utf-8", errors="replace",
+    )
+    assert proc.returncode == 0, (
+        f"QG audit of harness/selfci exited {proc.returncode}:\n{proc.stderr}"
+    )
+    data = json.loads(proc.stdout)
+    # Anti-case: an empty scan would be vacuously green — require the
+    # generator plus both test files to have actually been checked.
+    files_checked = data["stats"]["files_checked"]
+    assert files_checked >= 3, (
+        f"QG scanned only {files_checked} file(s) under harness/selfci — vacuous"
+    )
+    errors = [i for i in data["issues"] if i.get("severity") == "error"]
+    assert not errors, (
+        "harness/selfci carries QG errors that E0.6's baseline would enshrine:\n"
+        + "\n".join(
+            f"  {i['file']}:{i['line']} {i['rule']} — {i['message']}"
+            for i in errors
+        )
+    )
 
 
 # ── Runner ────────────────────────────────────────────────────────────

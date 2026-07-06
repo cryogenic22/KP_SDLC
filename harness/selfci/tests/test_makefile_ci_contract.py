@@ -1,8 +1,12 @@
 """Makefile CI contract: the targets self-CI leans on must actually work.
 
-Two guarantees:
+Three guarantees:
 - the `sarif` target passes an output path to --sarif (bare --sarif is an
   argparse error — quality_gate.py exits 2 before scanning anything);
+- the `sarif` target creates that path's parent directory first
+  (.quality-reports/ is gitignored and `make clean` deletes it, and
+  quality_gate.py opens --sarif without makedirs — so without the mkdir a
+  fresh checkout crashes with FileNotFoundError after the whole scan);
 - `make test` (the blocking CI step) covers the harness suites too, via a
   `test-harness` prerequisite that loops the structural-floor, process and
   selfci test files exactly like the other suite targets.
@@ -16,6 +20,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parents[3]  # repo root
 _MAKEFILE = _ROOT / "Makefile"
 
+_SARIF_PATH_RE = re.compile(r"--sarif[ \t]+(\S+)")
+
 
 def _makefile_text() -> str:
     """Makefile text, CRLF-normalized."""
@@ -25,8 +31,9 @@ def _makefile_text() -> str:
 def _recipe(target: str, text: str) -> str:
     """Return the tab-indented recipe lines of a Makefile target ('' if absent)."""
     lines = text.split("\n")
+    target_re = re.compile(rf"^{re.escape(target)}:")
     for i, line in enumerate(lines):
-        if re.match(rf"^{re.escape(target)}:", line):
+        if target_re.match(line):
             body = []
             for follow in lines[i + 1:]:
                 if follow.startswith("\t"):
@@ -43,13 +50,35 @@ def test_sarif_target_passes_output_path():
     recipe = _recipe("sarif", _makefile_text())
     assert recipe, "Makefile has no 'sarif' target"
     assert "quality_gate.py" in recipe, "sarif target no longer invokes quality_gate.py"
-    m = re.search(r"--sarif[ \t]+(\S+)", recipe)
+    m = _SARIF_PATH_RE.search(recipe)
     assert m, (
         "sarif recipe passes bare --sarif with no output path — argparse "
         "requires one argument, so the target exits 2 before scanning"
     )
-    assert not m.group(1).startswith("-"), (
-        f"--sarif is followed by another flag ({m.group(1)!r}), not an output path"
+    path = m.group(1)
+    assert not path.startswith("-"), (
+        f"--sarif is followed by another flag ({path!r}), not an output path"
+    )
+
+
+def test_sarif_target_creates_output_dir():
+    """`make sarif` must mkdir the --sarif path's parent before scanning:
+    .quality-reports/ is gitignored, absent on a fresh clone, and deleted by
+    `make clean`; quality_gate.py opens --sarif with no makedirs, so without
+    the mkdir the target dies FileNotFoundError after the entire scan."""
+    recipe = _recipe("sarif", _makefile_text())
+    assert recipe, "Makefile has no 'sarif' target"
+    m = _SARIF_PATH_RE.search(recipe)
+    path = m.group(1) if m else ""
+    assert path and not path.startswith("-"), "sarif recipe passes no --sarif output path"
+    parent = path.rpartition("/")[0]
+    if not parent:
+        return  # output lands in the repo root: nothing to create
+    gate_pos = recipe.find("quality_gate.py")
+    assert re.search(rf"mkdir -p {re.escape(parent)}(\s|$)", recipe[:gate_pos]), (
+        f"sarif recipe never runs 'mkdir -p {parent}' before quality_gate.py — "
+        "the directory is gitignored and `make clean` removes it, so a fresh "
+        "checkout crashes with FileNotFoundError: '{}/qg.sarif'".format(parent)
     )
 
 
