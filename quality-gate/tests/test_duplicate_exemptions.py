@@ -109,6 +109,36 @@ def test_python_ts_mirror_never_grouped():
     )
 
 
+# ── Attribution stability (load-bearing for the E0.4 baseline ratchet) ─
+
+
+_DUP_FN = (
+    "def compute_total(items):\n"
+    "    total = 0\n"
+    "    for item in items:\n"
+    "        total += item\n"
+    "    return total\n"
+)
+
+
+def test_duplicate_attribution_is_scan_order_independent():
+    """The carrier file of a cross-file duplicate must not flap with scan
+    order: per-file warning counts are load-bearing for the baseline
+    ratchet, so {x,y} and {y,x} must attribute the shared warning to the
+    same (lexicographically-first normalized path) file."""
+    issues_xy = _run_duplicate_check({"pkg/x.py": _DUP_FN, "pkg/y.py": _DUP_FN})
+    issues_yx = _run_duplicate_check({"pkg/y.py": _DUP_FN, "pkg/x.py": _DUP_FN})
+    assert len(issues_xy) == len(issues_yx) == 1, (issues_xy, issues_yx)
+    file_xy = issues_xy[0]["file"].replace("\\", "/")
+    file_yx = issues_yx[0]["file"].replace("\\", "/")
+    assert file_xy == file_yx, (
+        f"scan order changed duplicate attribution: {file_xy} vs {file_yx}"
+    )
+    assert file_xy == "pkg/x.py", (
+        f"carrier must be the lexicographically-first path, got {file_xy}"
+    )
+
+
 # ── Alembic Skip List Tests ──────────────────────────────────────────
 
 

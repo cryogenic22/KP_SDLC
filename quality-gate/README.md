@@ -308,6 +308,12 @@ Guarantees:
   visible in any workflow diff, which is owner-review-gated.
 - **Every write is provenance-stamped** (`generated_at`, `commit`,
   `generated_by`), so any regeneration is attributable.
+- **Config redirects are review-gated too.** The runtime config overrides
+  the engine auto-discovers at the scan root (`.quality-gate.json`,
+  `quality-gate.config.json`) belong on the protected surface (CODEOWNERS)
+  alongside the baseline itself — otherwise an unreviewed override could
+  redirect `baseline.path` to a fabricated baseline. This repo protects
+  both; keep that pairing when adopting the gate elsewhere.
 - **Fail-closed loading.** A corrupt baseline raises `baseline_unreadable`
   and an explicitly requested missing one raises `baseline_missing` —
   the gate never silently runs ratchet-free.

@@ -20,6 +20,14 @@ quality-gate/quality_gate.py
 #   (written only via --mode baseline, which is refused in CI).
 .quality-gate.baseline.json
 
+# — Quality Gate runtime config overrides: the engine auto-discovers these at
+#   the scan root and deep-merges them over the defaults, so an unreviewed
+#   override could redirect baseline.path to a fabricated baseline or gut the
+#   thresholds without touching any protected file. Bare filenames match at
+#   any depth (CODEOWNERS gitignore semantics), covering any --root in-repo.
+.quality-gate.json
+quality-gate.config.json
+
 # — Cathedral Keeper: architecture policy config (enabled policies, severities)
 cathedral-keeper/cathedral-keeper.config.json
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -226,6 +227,97 @@ def test_comparison_is_per_file_and_order_independent():
             assert len(ratchet) == 1 and ratchet[0].file.endswith("b.py")
             assert not any(i.rule == "prs_score" for i in r.issues)
         assert gate_ab.file_prs == gate_ba.file_prs
+
+
+DUP_FN = (
+    "def compute_total(items):\n"
+    "    total = 0\n"
+    "    for item in items:\n"
+    "        total += item\n"
+    "    return total\n"
+)
+WARN_LINE = "wx = 0  # type: " + "ignore\n"  # exactly one real warning
+
+
+def test_cross_file_duplicate_warnings_do_not_flap_with_scan_order():
+    """Cross-file duplicate attribution is load-bearing for the ratchet:
+    the same file SET must give the same verdict in any scan order — no
+    fabricated regression, and no real regression masked by the duplicate
+    warning migrating onto another file's vacated headroom."""
+    with tempfile.TemporaryDirectory() as tmp:
+        x = _write(tmp, "x.py", DUP_FN)              # duplicate carrier
+        y = _write(tmp, "y.py", DUP_FN + WARN_LINE)  # duplicate + 1 real warning
+        bpath = os.path.join(tmp, "bl.json")
+        _write_baseline_from_scan(tmp, bpath)
+
+        def verdict(paths):
+            result = _gate(tmp, baseline=bpath).run(paths=paths)
+            ratchet = sorted(Path(i.file).name for i in result.issues
+                             if i.rule == "baseline_ratchet")
+            return result.passed, ratchet
+
+        # (a) Unchanged files: every order passes (no fabricated regression).
+        for paths in ([x, y], [y, x]):
+            passed, ratchet = verdict(paths)
+            assert passed is True and ratchet == [], \
+                f"scan order fabricated a regression: {ratchet}"
+
+        # (b) Fix y's real warning, add a real one to x: the duplicate
+        # warning must not migrate onto y's vacated headroom and mask it.
+        _write(tmp, "y.py", DUP_FN)
+        _write(tmp, "x.py", DUP_FN + WARN_LINE)
+        assert _gate(tmp, baseline=bpath).run().passed is False, \
+            "authoritative full scan must see the regression (anti-vacuous)"
+        for paths in ([x, y], [y, x]):
+            passed, ratchet = verdict(paths)
+            assert passed is False and ratchet == ["x.py"], \
+                f"scan order masked a real regression: passed={passed} ratchet={ratchet}"
+
+
+# ── Process layer: config overrides sit on the protected surface ─────
+
+def test_engine_discovered_config_overrides_are_protected_surface():
+    """Anti-regeneration layer (c) must not be bypassable by an UNPROTECTED
+    config override redirecting baseline.path to a fabricated baseline:
+    every config file the engine auto-discovers at the scan root must
+    itself sit on the protected surface (CODEOWNERS)."""
+    surface = QG_DIR.parent / "protected-surface.txt"
+    assert surface.exists(), "engine repo must ship protected-surface.txt"
+    entries = [
+        ln.strip().split()[0]
+        for ln in surface.read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+
+    def protected(rel: str) -> bool:
+        for pat in entries:
+            if rel == pat or (pat.endswith("/") and rel.startswith(pat)):
+                return True
+            if "/" not in pat and rel.rsplit("/", 1)[-1] == pat:
+                return True  # bare filename: any depth (CODEOWNERS semantics)
+        return False
+
+    # Derive the auto-discovered override filenames from the engine source,
+    # so adding a new unprotected discovery path fails this test too.
+    src = QG_SCRIPT.read_text(encoding="utf-8")
+    discovered = set(re.findall(r'self\.root_dir\s*/\s*"([^"]+\.json)"', src))
+    assert discovered >= {".quality-gate.json", "quality-gate.config.json"}, \
+        f"discovery-set extraction broke; got {discovered}"
+
+    for name in sorted(discovered):
+        assert protected(name), (
+            f"engine auto-discovers '{name}' at the scan root but it is NOT "
+            "on the protected surface — an unreviewed override there can "
+            "redirect baseline.path to a fabricated baseline or gut the "
+            "thresholds. Add it to protected-surface.txt and regenerate "
+            "CODEOWNERS."
+        )
+
+    from qg.baseline import DEFAULT_BASELINE_FILENAME
+    assert protected(DEFAULT_BASELINE_FILENAME), \
+        "the baseline itself must stay on the protected surface"
+    assert not protected("definitely-not-a-config.json"), \
+        "protected() matcher is vacuous — it matches anything"
 
 
 def test_vetoed_file_cannot_be_baselined_away():
