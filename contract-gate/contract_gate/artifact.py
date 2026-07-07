@@ -19,6 +19,9 @@ stdlib json for JSON) so the gate keeps zero runtime dependencies.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from sdlc_schemas import load_document
 
 
@@ -31,12 +34,34 @@ def parse_artifact(path):
     """Load a report artifact -> its raw decoded document.
 
     Raises ``OSError`` if the file is unreadable and the loader's parse error
-    (``miniyaml.MiniYAMLError`` for YAML, ``json.JSONDecodeError``/``ValueError``
-    for JSON) if it is unparseable -- every absence is loud, never a silent
-    empty document.
+    (``miniyaml.MiniYAMLError`` for YAML, ``MalformedArtifact`` for JSON) if it
+    is unparseable -- every absence is loud, never a silent empty document. JSON
+    is parsed with a duplicate-key guard so it fails CLOSED symmetrically with
+    the YAML loader (miniyaml already rejects duplicate keys): otherwise
+    ``json.loads`` would silently keep the last of a repeated ``metrics`` key and
+    drop a dangling reference hidden in the earlier one.
     """
+    path = Path(path)
+    if path.suffix == ".json":
+        text = path.read_text(encoding="utf-8")
+        try:
+            return json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+        except json.JSONDecodeError as exc:
+            raise MalformedArtifact(f"unparseable JSON report artifact: {exc}") from exc
     data, _ = load_document(path)
     return data
+
+
+def _reject_duplicate_keys(pairs):
+    """A JSON ``object_pairs_hook`` that fails closed on a duplicate key, matching
+    the YAML loader's behaviour -- a repeated key silently kept as last-wins could
+    drop a dangling metric reference before the extractor ever sees it."""
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise MalformedArtifact(f"duplicate key {key!r} in JSON report artifact")
+        result[key] = value
+    return result
 
 
 def extract_metric_ids(data) -> list:

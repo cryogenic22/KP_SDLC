@@ -59,10 +59,11 @@ def _report(result: ContractCheckResult) -> None:
           file=sys.stderr)
 
 
-# Every absence in the library load (missing file, unparseable YAML/JSON, or an
+# Every absence in the library load (missing file, an unreadable path -- a
+# directory or permission-denied is an OSError -- unparseable YAML/JSON, or an
 # unknown singleton tag) collapses to one loud exit 2; ContractInvalid is kept
 # separate only so its E1.7 findings are echoed for accountability.
-_LIBRARY_ABSENT = (FileNotFoundError, ValueError, miniyaml.MiniYAMLError)
+_LIBRARY_ABSENT = (OSError, ValueError, miniyaml.MiniYAMLError)
 # Every absence in the artifact read (unreadable, unparseable YAML, malformed
 # shape, or bad JSON -- json.JSONDecodeError is a ValueError) is one loud exit 2.
 _ARTIFACT_ABSENT = (OSError, MalformedArtifact, miniyaml.MiniYAMLError, ValueError)

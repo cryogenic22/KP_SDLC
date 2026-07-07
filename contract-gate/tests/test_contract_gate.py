@@ -290,6 +290,31 @@ def test_cli_invalid_library_fails_closed_exit_2(capsys):
     assert "E-REQUIRED" in err  # pinned: the missing tolerance, not some unrelated fail
 
 
+def test_cli_json_duplicate_metrics_key_fails_closed_exit_2():
+    # BLOCKER regression: json.loads keeps only the last of a duplicate 'metrics'
+    # key, so a dangling ref hidden in the earlier block would be silently
+    # dropped -> exit 0. It must fail closed (exit 2), symmetric with the YAML
+    # loader's duplicate-key refusal.
+    dup = ('{"metrics": [{"id": "ghost_dangling"}], '
+           '"metrics": [{"id": "revenue_total"}]}')
+    with tempfile.TemporaryDirectory() as tmp:
+        code = _contract_cli(tmp, _LIBRARY_TWO, dup, name="report.json")
+    assert code == 2, code
+
+
+def test_cli_unreadable_library_directory_fails_closed_exit_2():
+    # MAJOR regression: a metric-library path that is a directory raises OSError;
+    # it must be a loud exit 2 (config-unresolved), not an uncaught traceback /
+    # exit 1 (the block code).
+    art = "metrics:\n  - id: revenue_total\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        core = Path(tmp) / ".sdlc-core"
+        (core / "metric-library.yaml").mkdir(parents=True)
+        art_path = _write_artifact(tmp, art)
+        code = cli_main(["contract", str(art_path), "--core-dir", str(core)])
+    assert code == 2, code
+
+
 def test_invalid_library_raises_contract_invalid():
     with tempfile.TemporaryDirectory() as tmp:
         core = _write_core(tmp, _LIBRARY_INVALID)
