@@ -24,6 +24,7 @@ sdlc = "sdlc_init.cli:main"
 sdlc-schemas = "sdlc_schemas.cli:main"
 rv = "runtime_verify.cli:main"
 ee = "eval_engine.cli:main"
+g1 = "input_gate.cli:main"
 
 # Explicit mapping: component homes keep their product-facing hyphenated names
 # (quality-gate/, cathedral-keeper/) while the importable packages inside them
@@ -45,6 +46,7 @@ packages = [
     "runtime_verify.packs",
     "eval_engine",
     "eval_engine.kinds",
+    "input_gate",
 ]
 
 [tool.setuptools.package-dir]
@@ -54,6 +56,7 @@ sdlc_init = "sdlc-init/sdlc_init"
 sdlc_schemas = "schemas/sdlc_schemas"
 runtime_verify = "runtime-verify/runtime_verify"
 eval_engine = "eval-engine/eval_engine"
+input_gate = "input-gate/input_gate"
 
 # The six SHAPE documents, the failing starters, and any fixtures ship as
 # sdlc_schemas package data so a born-gated repo reads shapes from the
