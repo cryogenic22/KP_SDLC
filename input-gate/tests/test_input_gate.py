@@ -397,6 +397,34 @@ def test_pattern_present_passes_and_fails():
     assert bad is False and "did not match" in detail
 
 
+def test_field_present_rejects_whitespace_value():
+    # BLOCKER regression: a whitespace-only value satisfies nothing.
+    check = {"type": "field_present", "path": "owner.team"}
+    for blank in ("   ", "\t", "\n  "):
+        got, _ = evaluate_check(check, Spec({"owner": {"team": blank}}, "", "s"))
+        assert got is False, repr(blank)
+
+
+def test_section_present_ignores_code_fence_heading():
+    # BLOCKER regression: a '#' line inside a ``` fence is code, not a heading, so
+    # it must not satisfy a block section_present requirement.
+    check = {"type": "section_present", "heading": "Acceptance Criteria"}
+    fenced = "```markdown\n# Acceptance Criteria\n```\n"
+    assert evaluate_check(check, Spec({}, fenced, "s"))[0] is False
+    real = fenced + "# Acceptance Criteria\n"
+    assert evaluate_check(check, Spec({}, real, "s"))[0] is True
+
+
+def test_pattern_present_ignores_comment_and_fence():
+    # a requirement is not satisfied by a mention in a comment or a code sample.
+    check = {"type": "pattern_present", "pattern": "(?i)rollback"}
+    commented = "<!-- TODO: add a rollback plan -->\nno plan here\n"
+    assert evaluate_check(check, Spec({}, commented, "s"))[0] is False
+    fenced = "```\nrollback\n```\nno plan here\n"
+    assert evaluate_check(check, Spec({}, fenced, "s"))[0] is False
+    assert evaluate_check(check, Spec({}, "We will rollback safely.\n", "s"))[0] is True
+
+
 def test_unknown_check_type_fails_closed():
     try:
         evaluate_check({"type": "llm_vibes"}, Spec({}, "x", "s"))

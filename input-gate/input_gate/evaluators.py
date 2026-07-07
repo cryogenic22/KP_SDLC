@@ -24,6 +24,7 @@ from sdlc_schemas import miniyaml
 
 _FENCE = "---"
 _ATX_HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _MISSING = object()
 
 
@@ -46,6 +47,14 @@ class Spec:
     front_matter: dict
     body: str
     file: str = ""
+
+    @property
+    def prose_body(self) -> str:
+        """The body with fenced code blocks and HTML comments removed, so a
+        heading or pattern that appears only inside an EXAMPLE / template block
+        does not falsely satisfy a requirement -- a block requirement must be met
+        by the spec's own prose, never by a code sample or a commented-out note."""
+        return _prose_body(self.body)
 
 
 def _split_front_matter(text: str):
@@ -81,6 +90,31 @@ def parse_spec(path) -> Spec:
     return Spec(front_matter=front_matter, body=body, file=str(path))
 
 
+def _fence_marker(stripped: str):
+    """The fence run (``` ``` ``` / ``~~~``) a line opens or closes, else None."""
+    for char in ("`", "~"):
+        if stripped.startswith(char * 3):
+            return char
+    return None
+
+
+def _prose_body(body: str) -> str:
+    """Drop fenced code blocks and HTML comments so example / commented markup
+    cannot satisfy a section_present / pattern_present requirement."""
+    out: list = []
+    fence = None
+    for line in body.split("\n"):
+        marker = _fence_marker(line.lstrip())
+        if fence is None:
+            if marker is not None:
+                fence = marker
+            else:
+                out.append(line)
+        elif marker == fence:
+            fence = None
+    return _HTML_COMMENT.sub("", "\n".join(out))
+
+
 def _headings(body: str) -> frozenset:
     """The set of ATX (``#``-prefixed) heading texts in a markdown body."""
     found = set()
@@ -93,10 +127,13 @@ def _headings(body: str) -> frozenset:
 
 def _is_present(value) -> bool:
     """True when a front-matter value is present AND non-empty. ``0`` / ``False``
-    are real values; ``None`` and an empty string/collection are not."""
+    are real values; ``None``, an empty/whitespace-only string, and an empty
+    collection are not (a whitespace-only value satisfies nothing)."""
     if value is None:
         return False
-    if isinstance(value, (str, list, dict, tuple, set)):
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict, tuple, set)):
         return len(value) > 0
     return True
 
@@ -117,7 +154,7 @@ def _eval_section(check: dict, spec: Spec):
     heading = check.get("heading")
     if not heading:
         raise MalformedCheck("section_present requires a 'heading'")
-    if heading in _headings(spec.body):
+    if heading in _headings(spec.prose_body):
         return True, ""
     return False, f"section heading {heading!r} is absent from the spec body"
 
@@ -139,7 +176,7 @@ def _eval_pattern(check: dict, spec: Spec):
     if not pattern:
         raise MalformedCheck("pattern_present requires a 'pattern'")
     try:
-        matched = re.search(pattern, spec.body) is not None
+        matched = re.search(pattern, spec.prose_body) is not None
     except re.error as exc:
         raise MalformedCheck(f"invalid regex {pattern!r}: {exc}") from exc
     if matched:
