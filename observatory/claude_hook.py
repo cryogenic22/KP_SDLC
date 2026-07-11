@@ -14,6 +14,10 @@ except ImportError:  # Direct execution: python observatory/claude_hook.py
 
 
 def main() -> int:
+    # Kill switch: with default-on capture, any contributor can opt out for a
+    # session without editing shared settings.json. Fail-safe no-op, exit 0.
+    if os.environ.get("OBSERVATORY_DISABLE") == "1":
+        return 0
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):

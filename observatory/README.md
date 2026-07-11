@@ -96,6 +96,26 @@ python -m pytest observatory/tests -q
 CLI — one entry point (`python -m observatory`, or the packaged
 `kp-observatory` console script), backed by the adaptive projection.
 
+## Disable, uninstall, and overhead
+
+Capture is designed to be safe to leave on and trivial to turn off:
+
+- **Disable for a session (no file edits):** set `OBSERVATORY_DISABLE=1`. The
+  hook then exits 0 immediately as a no-op — nothing is captured.
+- **Uninstall:** remove the `python observatory/claude_hook.py` entries from
+  `.claude/settings.json` (they are additive, one per hook event). The CtxPack
+  and reuse-injector hooks are independent and are never touched by install or
+  uninstall.
+- **Fail-safe:** a capture error exits non-zero *without* the exit code 2 that
+  would block a tool call, and each hook has a 5-second timeout, so a broken or
+  slow hook can never block or hang a Claude Code session.
+- **Overhead:** one hook invocation is ~0.2 s on this machine, dominated by
+  Python process start-up (the capture itself is a bounded append). That cost is
+  paid out-of-band per hook event, not on the model's critical path.
+- **Privacy:** events are written only to the local `.observatory/` directory
+  (git-ignored); tool inputs are excluded unless `OBSERVATORY_CAPTURE_INPUTS=1`,
+  and even then sensitive-looking keys are redacted and values are bounded.
+
 ## First-increment health rules
 
 | Rule | Classification | Behaviour |

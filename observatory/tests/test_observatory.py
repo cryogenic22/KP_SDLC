@@ -7,6 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import io  # noqa: E402
+
+from observatory import claude_hook  # noqa: E402
 from observatory.events import append_event, normalize_claude_hook, read_events  # noqa: E402
 from observatory.health import SnapshotBuilder  # noqa: E402
 from observatory.install_hooks import HOOK_COMMAND, HOOK_EVENTS, install  # noqa: E402
@@ -98,4 +101,13 @@ def test_hook_installer_merges_and_is_idempotent(tmp_path):
     commands = [hook["command"] for entry in installed["hooks"]["PreCompact"]
                 for hook in entry.get("hooks", [])]
     assert commands.count(HOOK_COMMAND) == 1
+
+
+def test_disable_switch_is_a_fail_safe_noop(tmp_path, monkeypatch):
+    payload = {"hook_event_name": "PreToolUse", "session_id": "s", "cwd": str(tmp_path),
+               "tool_name": "Bash"}
+    monkeypatch.setenv("OBSERVATORY_DISABLE", "1")
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
+    assert claude_hook.main() == 0
+    assert not (tmp_path / ".observatory" / "events.jsonl").exists()
 
