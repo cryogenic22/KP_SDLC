@@ -26,6 +26,7 @@ rv = "runtime_verify.cli:main"
 ee = "eval_engine.cli:main"
 g1 = "input_gate.cli:main"
 g2 = "contract_gate.cli:main"
+kp-observatory = "observatory.__main__:main"
 
 # Explicit mapping: component homes keep their product-facing hyphenated names
 # (quality-gate/, cathedral-keeper/) while the importable packages inside them
@@ -49,6 +50,7 @@ packages = [
     "eval_engine.kinds",
     "input_gate",
     "contract_gate",
+    "observatory",
 ]
 
 [tool.setuptools.package-dir]
@@ -60,6 +62,10 @@ runtime_verify = "runtime-verify/runtime_verify"
 eval_engine = "eval-engine/eval_engine"
 input_gate = "input-gate/input_gate"
 contract_gate = "contract-gate/contract_gate"
+# Observatory already lives in an importable, hyphen-free package directory, so
+# it maps to itself (unlike the component homes above whose product-facing names
+# contain a hyphen). Its tests/ dir is intentionally excluded from packages.
+observatory = "observatory"
 
 # The six SHAPE documents, the failing starters, and any fixtures ship as
 # sdlc_schemas package data so a born-gated repo reads shapes from the
@@ -72,3 +78,6 @@ sdlc_schemas = [
     "starters/rubrics/*.yaml",
     "fixtures/*",
 ]
+# The dashboard HTML ships with the package so `kp-observatory serve` works from
+# an installed wheel, not just an in-tree checkout.
+observatory = ["static/*.html"]

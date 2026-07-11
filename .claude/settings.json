@@ -10,6 +10,15 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreCompact": [
@@ -18,6 +27,15 @@
           {
             "type": "command",
             "command": "python -P -m ctxpack.cli.main hook pre-compact"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
           }
         ]
       }
@@ -31,6 +49,15 @@
             "command": "python -P -m ctxpack.cli.main hook session-start"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -41,6 +68,15 @@
             "command": "python -P -m ctxpack.cli.main hook session-end"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
@@ -49,6 +85,92 @@
           {
             "type": "command",
             "command": "python -P -m ctxpack.cli.main hook stop"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python observatory/claude_hook.py",
+            "timeout": 5
           }
         ]
       }
