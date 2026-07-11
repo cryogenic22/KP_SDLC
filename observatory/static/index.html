@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent Observatory</title>
+  <style>
+    :root { color-scheme: dark; --ink:#e7edf8; --muted:#94a3b8; --panel:#111827ee; --line:#263449;
+      --green:#34d399; --amber:#fbbf24; --orange:#fb923c; --red:#f87171; --blue:#60a5fa; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; color:var(--ink); font:14px/1.45 Inter,Segoe UI,sans-serif;
+      background:radial-gradient(circle at 20% 0,#17345b 0,transparent 35%),linear-gradient(#09111f,#0b1220 55%,#101827); }
+    header { position:sticky; top:0; z-index:5; display:flex; gap:22px; align-items:center; padding:18px 26px;
+      border-bottom:1px solid var(--line); background:#09111fdd; backdrop-filter:blur(12px) }
+    h1 { margin:0; font-size:20px; letter-spacing:.04em } .status { color:var(--green) }
+    main { max-width:1500px; margin:auto; padding:22px; display:grid; grid-template-columns:1.5fr 1fr; gap:18px }
+    section { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 14px 40px #0005 }
+    section h2 { margin:0 0 14px; font-size:14px; color:#cbd5e1; letter-spacing:.08em; text-transform:uppercase }
+    .span { grid-column:1/-1 } .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px }
+    .stat,.gate,.context,.worktree { padding:13px; border-radius:12px; background:#172033; border:1px solid #2a3850 }
+    .big { display:block; margin-top:4px; font-size:25px; font-weight:750 }
+    .muted { color:var(--muted) } .pill { display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; background:#243148 }
+    .pass { color:var(--green) } .fail,.high,.critical,.error { color:var(--red) } .medium,.inconclusive { color:var(--amber) }
+    .missing,.waiting,.degraded { color:var(--orange) } .working { color:var(--blue) }
+    .agents { min-height:280px; display:flex; flex-wrap:wrap; align-items:flex-end; gap:22px; padding:24px;
+      border-radius:14px; background:linear-gradient(#1b3554 0 52%,#314036 52%); border:1px solid #35506d }
+    .agent-card { width:150px; text-align:center; position:relative }
+    .agent { width:62px; height:96px; margin:auto; position:relative; animation:bob 1.8s ease-in-out infinite }
+    .head { position:absolute; left:16px; top:0; width:32px; height:32px; border-radius:50%; background:#f2c49b; border:3px solid #08111e }
+    .body { position:absolute; left:9px; top:27px; width:45px; height:48px; border-radius:14px 14px 8px 8px; background:#4f9cf9; border:3px solid #08111e }
+    .legs { position:absolute; left:14px; top:70px; width:34px; height:25px; border-left:9px solid #151f32; border-right:9px solid #151f32 }
+    .pack { position:absolute; right:-5px; top:32px; width:20px; height:37px; border-radius:7px; background:#f59e0b; border:3px solid #08111e;
+      transform-origin:bottom; transform:scale(var(--pack,1)) }
+    .agent-card.needs_attention .body,.agent-card.error .body { background:#ef4444 }
+    .agent-card.completed .agent { animation:none; opacity:.65 } .agent-card.waiting .agent { animation:wait 2s linear infinite }
+    .desk { height:8px; margin-top:-20px; background:#664c3d; border:2px solid #251b18; border-radius:4px }
+    .name { margin-top:14px; font-weight:700 } .activity { height:38px; color:#cbd5e1; font-size:12px }
+    .attention { display:grid; gap:10px; max-height:570px; overflow:auto }
+    .finding { border-left:4px solid var(--blue); padding:12px 12px 12px 14px; border-radius:8px; background:#151f31 }
+    .finding.high,.finding.critical { border-color:var(--red) } .finding.medium { border-color:var(--amber) }
+    .finding h3 { margin:0 0 5px; font-size:14px } details { margin-top:8px; color:#cbd5e1 }
+    pre { white-space:pre-wrap; word-break:break-word; color:#9fb2c9; font-size:11px }
+    .meter { height:8px; margin-top:8px; overflow:hidden; border-radius:8px; background:#273449 }
+    .meter i { display:block; height:100%; width:var(--value); background:linear-gradient(90deg,var(--green),var(--amber),var(--red)) }
+    .events { max-height:320px; overflow:auto; font-family:ui-monospace,Consolas,monospace; font-size:12px }
+    .event { padding:7px 0; border-bottom:1px solid #223047 }
+    /* adaptive contracts */
+    .caps { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px }
+    .cap { display:flex; align-items:center; gap:7px; padding:6px 10px; border-radius:10px; background:#172033; border:1px solid #2a3850; font-size:12px }
+    .cap .dot { width:9px; height:9px; border-radius:50%; background:#475569; flex:none }
+    .cap.observed .dot { background:var(--green); box-shadow:0 0 8px var(--green) }
+    .cap.supported .dot { background:var(--amber) }
+    .cap.unavailable { opacity:.5 }
+    .cap small { color:var(--muted) }
+    .dims { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px }
+    .dim { padding:14px; border-radius:12px; background:#141d2e; border:1px solid #2a3850 }
+    .dim h3 { margin:0 0 3px; font-size:14px; text-transform:capitalize }
+    .levelbar { display:flex; gap:4px; margin:10px 0 8px }
+    .seg { flex:1; height:9px; border-radius:3px; background:#26324a }
+    .seg.on { background:linear-gradient(90deg,var(--blue),var(--green)) }
+    .delta { font-size:12px; font-weight:700 }
+    .delta.up { color:var(--green) } .delta.down { color:var(--red) } .delta.flat { color:var(--muted) }
+    .next { margin-top:8px; font-size:12px; color:#cbd5e1 } .next b { color:var(--amber) }
+    .mech { display:flex; flex-wrap:wrap; gap:7px; margin:6px 0 4px }
+    .badge { padding:3px 9px; border-radius:999px; font-size:11px; border:1px solid #2a3850 }
+    .badge.on { background:#10331f; color:var(--green); border-color:#1c5c38 }
+    .badge.off { background:#3a1620; color:var(--red); border-color:#5c1c28 }
+    .usagebar { display:flex; height:22px; border-radius:8px; overflow:hidden; border:1px solid #2a3850; margin:6px 0 12px }
+    .usagebar span { display:flex; align-items:center; justify-content:center; font-size:11px; color:#08111e; font-weight:700; min-width:0 }
+    .usagebar .reads { background:linear-gradient(90deg,#2563eb,#34d399) } .usagebar .greps { background:#b45309; color:#fde68a }
+    .fid { padding:7px 0; border-bottom:1px solid #223047; font-size:12px }
+    .subhead { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.06em; margin-top:12px }
+    @keyframes bob { 50% { transform:translateY(-5px) } } @keyframes wait { 50% { transform:translateX(5px) } }
+    @media(max-width:900px){ main{grid-template-columns:1fr}.span{grid-column:auto} }
+  </style>
+</head>
+<body>
+  <header><h1>Agent Observatory</h1><span id="repo" class="muted">connecting…</span><span id="live" class="status">● live</span><span id="updated" class="muted"></span></header>
+  <main>
+    <section class="span"><h2>Control room</h2><div id="stats" class="grid"></div></section>
+    <section class="span"><h2>Maturity — earned capability, not busyness</h2><div id="maturity-head" class="muted"></div><div id="maturity" class="dims"></div></section>
+    <section><h2>Agent floor</h2><div id="agents" class="agents"></div></section>
+    <section><h2>Attention queue</h2><div id="attention" class="attention"></div></section>
+    <section><h2>Harness telemetry</h2><div id="telemetry"></div></section>
+    <section><h2>Memory system · CtxPack</h2><div id="memory"></div></section>
+    <section><h2>Context health · activity pressure</h2><div id="contexts" class="grid"></div></section>
+    <section><h2>Readiness gates</h2><div id="gates" class="grid"></div></section>
+    <section class="span"><h2>Claude worktrees</h2><div id="worktrees" class="grid"></div></section>
+    <section class="span"><h2>Recent harness events</h2><div id="events" class="events"></div></section>
+  </main>
+  <script>
+    const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
+    const replace=(id,nodes)=>{document.getElementById(id).replaceChildren(...nodes)};
+    const empty=(text)=>[el('div','muted',text)];
+    const nice=(s)=>String(s).replaceAll('_',' ');
+
+    function renderMaturity(m){
+      const head=document.getElementById('maturity-head');
+      if(!m||!m.dimensions){head.textContent='';replace('maturity',empty('Maturity projection unavailable.'));return;}
+      const deltas=m.delta_from_last_checkpoint||{};
+      const hasPrev=Object.keys(deltas).length>0;
+      head.replaceChildren(
+        el('span','',(m.recorded_checkpoints||0)+' checkpoint(s) recorded'),
+        el('span','muted',hasPrev?'   ·   comparing against the last recorded checkpoint':'   ·   baseline — record a checkpoint to start tracking change'));
+      replace('maturity',m.dimensions.map(d=>{
+        const card=el('div','dim');
+        card.append(el('h3','',nice(d.id)));
+        card.append(el('div','muted','level '+d.level+' / 5 · '+d.label));
+        const bar=el('div','levelbar');
+        for(let i=1;i<=5;i++)bar.append(el('span','seg'+(i<=d.level?' on':'')));
+        card.append(bar);
+        if(hasPrev){
+          const dl=deltas[d.id]||0;
+          const cls=dl>0?'up':dl<0?'down':'flat';
+          const txt=dl>0?('▲ +'+dl+' since last checkpoint'):dl<0?('▼ '+dl+' since last checkpoint'):'— steady since last checkpoint';
+          card.append(el('div','delta '+cls,txt));
+        }
+        const next=el('div','next');
+        if(d.next_gaps&&d.next_gaps.length){next.append(el('b','','Next step: '),document.createTextNode(d.next_gaps[0]));}
+        else{next.append(document.createTextNode('Fully evidenced at this level.'));}
+        card.append(next);
+        return card;
+      }));
+    }
+
+    function renderTelemetry(list){
+      if(!list||!list.length){replace('telemetry',empty('No harness telemetry adapter.'));return;}
+      const t=list[0];const nodes=[];
+      const hdr=el('div');
+      hdr.append(el('strong','',t.harness||t.adapter),
+        el('span',t.detected?'pass':'fail',t.detected?'  ● detected':'  ● not detected'),
+        el('span','muted','  ·  '+(t.event_count||0)+' events observed'));
+      nodes.push(hdr);
+      const states=t.capability_states||{};
+      const caps=el('div','caps');
+      Object.entries(states).forEach(([name,state])=>{
+        const c=el('div','cap '+state);
+        c.append(el('span','dot'),el('span','',nice(name)),
+          el('small','',state==='observed'?'observed':state==='supported'?'supported · no evidence yet':'unavailable'));
+        caps.append(c);
+      });
+      nodes.push(caps);
+      if(t.unknown_observed_event_types&&t.unknown_observed_event_types.length)
+        nodes.push(el('div','subhead','New / unknown observed events'),el('div','muted',t.unknown_observed_event_types.join(', ')));
+      (t.limitations||[]).forEach(l=>nodes.push(el('div','muted','⚠ '+l)));
+      replace('telemetry',nodes);
+    }
+
+    function renderMemory(list){
+      if(!list||!list.length){replace('memory',empty('No memory adapter installed.'));return;}
+      const mem=list[0];const nodes=[];
+      const cls=mem.status==='healthy'?'pass':mem.status==='degraded'?'degraded':'missing';
+      const hdr=el('div');
+      hdr.append(el('strong','',mem.provider),el('span',cls,'  '+mem.status));
+      nodes.push(hdr);
+      nodes.push(el('div','subhead','Mechanism coverage'));
+      const mech=el('div','mech');
+      Object.entries(mem.capabilities||{}).forEach(([k,v])=>mech.append(el('span','badge '+(v?'on':'off'),(v?'✓ ':'✗ ')+nice(k))));
+      nodes.push(mech);
+      const u=mem.usage||{ledger_reads:0,transcript_greps:0};
+      const reads=u.ledger_reads||0, greps=u.transcript_greps||0, total=Math.max(1,reads+greps);
+      nodes.push(el('div','subhead','Structured recall vs raw-transcript fallback'));
+      const bar=el('div','usagebar');
+      const rw=Math.round(100*reads/total);
+      const rs=el('span','reads');rs.style.width=rw+'%';rs.textContent=rw>=14?('recall '+reads):'';
+      const gs=el('span','greps');gs.style.width=(100-rw)+'%';gs.textContent=(100-rw)>=14?('fallback '+greps):'';
+      bar.append(rs,gs);nodes.push(bar);
+      if(greps>reads)nodes.push(el('div','muted','⚠ transcript fallback is outpacing structured recall'));
+      nodes.push(el('div','subhead','Integrity & literal fidelity'));
+      (mem.sessions||[]).forEach(s=>{
+        const fidKnown=s.literal_fidelity!=null, fidFull=fidKnown&&Number(s.literal_fidelity)>=1;
+        const fidCls=!fidKnown?'muted':fidFull?'pass':'fail';
+        const fidTxt=!fidKnown?'fidelity unknown':fidFull?'fidelity ✓ full':'fidelity ✗ '+s.literal_fidelity;
+        const clean=!(s.conflicts>0||(s.lint_status&&s.lint_status!=='ok'));
+        const row=el('div','fid');
+        row.append(el('strong','',s.session_id.slice(0,8)+'  '),
+          el('span',fidCls,fidTxt),
+          el('span','muted','  ·  integrity '),el('span',clean?'pass':'fail',clean?'ok':'attention'),
+          el('span','muted','  ·  lint '+(s.lint_status||'n/a')+' · conflicts '+(s.conflicts||0)));
+        nodes.push(row);
+      });
+      if(!(mem.sessions||[]).length)nodes.push(el('div','muted','No CtxPack sessions recorded yet.'));
+      replace('memory',nodes);
+    }
+
+    function render(data){
+      document.getElementById('repo').textContent=data.repository.name;
+      document.getElementById('updated').textContent='updated '+new Date(data.generated_at).toLocaleTimeString();
+      replace('stats',Object.entries(data.summary).map(([k,v])=>{const n=el('div','stat');n.append(el('span','muted',nice(k)),el('span','big',v));return n}));
+      renderMaturity(data.maturity);
+      renderTelemetry(data.telemetry);
+      renderMemory(data.memory);
+      replace('agents',data.agents.length?data.agents.map(a=>{const c=el('div','agent-card '+a.state);const person=el('div','agent');
+        const pressure=(data.contexts.find(x=>a.id.startsWith(x.session_id.slice(0,8)))||{}).activity_pressure||25;person.style.setProperty('--pack',String(.75+pressure/180));
+        person.append(el('div','head'),el('div','body'),el('div','legs'),el('div','pack'));c.append(person,el('div','desk'),el('div','name',a.name),el('div','activity',a.activity+(a.tool?' · '+a.tool:'')),el('span','pill '+a.state,nice(a.state)));return c}):empty('No Observatory hook events yet. Install hooks, then start a new Claude session.'));
+      replace('attention',data.attention.length?data.attention.map(f=>{const n=el('article','finding '+f.severity);n.append(el('h3','',f.title),el('div','muted',f.classification+' · '+f.confidence+' confidence · '+f.source),el('p','',f.message));
+        const d=el('details');d.append(el('summary','','Evidence and action'),el('pre','',JSON.stringify(f.evidence,null,2)),el('strong','','Next: '),document.createTextNode(f.recommended_action));n.append(d);return n}):empty('No findings.'));
+      replace('contexts',data.contexts.length?data.contexts.map(c=>{const n=el('div','context');n.append(el('strong','',c.session_id.slice(0,8)),el('span','big '+(c.level==='healthy'?'pass':c.level),c.turns+' turns'),el('div','muted',c.checkpoints+' checkpoints · '+c.files_changed+' files changed'));
+        const m=el('div','meter');m.style.setProperty('--value',c.activity_pressure+'%');m.append(el('i'));n.append(m,el('div','muted','activity pressure '+c.activity_pressure+'% · conversation activity, not context-window %'));return n}):empty('No CtxPack checkpoints found.'));
+      replace('gates',data.gates.map(g=>{const n=el('div','gate');n.append(el('strong','',g.name),el('span','big '+g.status,g.status),el('div','muted',g.files_checked!==undefined?g.files_checked+' files checked':g.total!==undefined?g.total+' eval cases':''));return n}));
+      replace('worktrees',data.worktrees.length?data.worktrees.map(w=>{const n=el('div','worktree');n.append(el('strong','',w.name),el('div',w.observed_active?'pass':'muted',w.classification),el('div','muted',w.linked?'linked git worktree':'link not detected'));return n}):empty('No Claude worktrees found.'));
+      replace('events',data.recent_events.length?data.recent_events.map(e=>el('div','event',new Date(e.timestamp).toLocaleTimeString()+'  '+e.event_type+'  '+((e.details||{}).tool_name||''))):empty('Waiting for events…'));
+    }
+    async function refresh(){try{const r=await fetch('/api/snapshot',{cache:'no-store'});if(!r.ok)throw new Error(r.status);render(await r.json());document.getElementById('live').textContent='● live';document.getElementById('live').className='status';}
+      catch(e){document.getElementById('live').textContent='● disconnected';document.getElementById('live').className='fail';}}
+    refresh();setInterval(refresh,3000);
+  </script>
+</body>
+</html>

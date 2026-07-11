@@ -34,6 +34,9 @@ ck-report.json
 # Harness runtime cache (reuse-injector index — derived, per-machine)
 .harness/cache/
 
+# Observatory runtime data (captured events + maturity history — per-machine, never committed)
+.observatory/
+
 # Claude Code — project settings + ctx ledger are shared (committed); rest stays local
 .claude/*
 !.claude/settings.json
