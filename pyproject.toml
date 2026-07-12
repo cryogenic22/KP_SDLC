@@ -26,6 +26,7 @@ rv = "runtime_verify.cli:main"
 ee = "eval_engine.cli:main"
 g1 = "input_gate.cli:main"
 g2 = "contract_gate.cli:main"
+g6 = "nfr_gate.cli:main"
 kp-observatory = "observatory.__main__:main"
 
 # Explicit mapping: component homes keep their product-facing hyphenated names
@@ -50,6 +51,8 @@ packages = [
     "eval_engine.kinds",
     "input_gate",
     "contract_gate",
+    "nfr_gate",
+    "nfr_gate.packs",
     "observatory",
 ]
 
@@ -62,6 +65,7 @@ runtime_verify = "runtime-verify/runtime_verify"
 eval_engine = "eval-engine/eval_engine"
 input_gate = "input-gate/input_gate"
 contract_gate = "contract-gate/contract_gate"
+nfr_gate = "nfr-gate/nfr_gate"
 # Observatory already lives in an importable, hyphen-free package directory, so
 # it maps to itself (unlike the component homes above whose product-facing names
 # contain a hyphen). Its tests/ dir is intentionally excluded from packages.

@@ -1,0 +1,14 @@
+# .sdlc-core/nfr-budget.yaml -- STARTER (engine-shipped, deliberately red).
+# FAILS `sdlc schemas check` until you replace every REPLACE-ME.
+# Shape: sdlc/nfr-budget@1 (shapes/nfr-budget.schema.yaml).
+schema: 'sdlc/nfr-budget@1'
+owner: 'REPLACE-ME'
+_note: 'Set owner to your platform/SRE team, then declare one budget per NFR id.'
+budgets:
+  api_p95_latency:
+    description: '95th-percentile API response time under nominal load.'
+    limit: 300
+    unit: ms
+    direction: max
+    owner: '@org/api-team'
+    _note: 'Set limit to your release ceiling; an observed p95 above it blocks.'

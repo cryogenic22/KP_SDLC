@@ -156,6 +156,7 @@ def _starter_files():
 _STARTER_TAG = {
     "def-of-ready.yaml": "sdlc/def-of-ready@1",
     "metric-library.yaml": "sdlc/metric-library@1",
+    "nfr-budget.yaml": "sdlc/nfr-budget@1",
     "standards.yaml": "sdlc/standards@1",
     "example-rubric.yaml": "sdlc/rubric@1",
 }

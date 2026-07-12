@@ -18,6 +18,7 @@ from .api import check_overlay, issues_to_findings
 _STARTERS = (
     "def-of-ready.yaml",
     "metric-library.yaml",
+    "nfr-budget.yaml",
     "standards.yaml",
     "rubrics/example-rubric.yaml",
 )

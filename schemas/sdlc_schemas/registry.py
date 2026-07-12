@@ -27,6 +27,7 @@ KNOWN = {
     "sdlc/rubric@1": "rubric.schema.yaml",
     "sdlc/golden-case@1": "golden-case.schema.json",
     "sdlc/architecture-contract@1": "architecture-contract.schema.yaml",
+    "sdlc/nfr-budget@1": "nfr-budget.schema.yaml",
 }
 
 

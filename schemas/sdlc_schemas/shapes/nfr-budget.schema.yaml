@@ -1,0 +1,159 @@
+# ==========================================================================
+# nfr-budget.schema.yaml -- SHAPE ONLY (engine layer).
+# VALUES live in .sdlc-core/nfr-budget.yaml.
+# A budget is a ONE-SIDED release bound (ceiling or floor), distinct from the
+# metric-library's two-sided reconciliation tolerance (Loop 5 / Epic 7 NFR).
+# ==========================================================================
+$id: 'sdlc/nfr-budget@1'
+title: 'Non-functional-requirement budgets (release ceilings/floors) for G6'
+x-instance-path: '.sdlc-core/nfr-budget.yaml'
+x-consumers:
+  - 'G6 NFR gate (`g6 nfr budget`): each entry supplies the single compare bound (limit) and its direction; an observed measurement is compared against it -- gate code carries no numeric literal (the grep-gate proves the number lives only here)'
+  - 'G6 fail-closed posture: a budget id with no supplied observation is an unmeasured NFR -> a block finding, never a silent pass (an empty budgets map fails E-MIN-PROPS so the gate can never pass vacuously)'
+  - 'reporting: entry owner + unit rendered on every breach finding; the six-gate status strip reads the pass/fail verdict'
+x-changelog:
+  - '@1 2026-07: initial shape (Loop 5 / Epic 7 NFR budgets)'
+
+type: object
+additionalProperties: false
+required:
+  - schema
+  - owner
+  - budgets
+properties:
+  schema:
+    const: 'sdlc/nfr-budget@1'
+    x-consumer: 'resolve_instance() tag dispatch'
+  owner:
+    type: string
+    pattern: '^@[A-Za-z0-9_./-]+$'
+    x-forbid-placeholder: true
+    x-consumer: 'reporting: library-level fallback contact on a breach whose entry omits an owner'
+  budgets:
+    type: object
+    minProperties: 1
+    description: 'Budget id -> NFR ceiling/floor. snake_case ids name the measured NFR and are the observation namespace.'
+    propertyNames:
+      pattern: '^[a-z][a-z0-9_]*$'
+    additionalProperties:
+      $ref: '#/$defs/budget'
+    x-consumer: 'G6 budget lookup (`g6 nfr budget`): keys are the observation ids the gate reconciles measurements against'
+
+$defs:
+  budget:
+    type: object
+    additionalProperties: false
+    required:
+      - limit
+      - unit
+      - direction
+      - owner
+    properties:
+      description:
+        type: string
+        x-consumer: 'PR review + report tooltip (the NFR contract text disputes resolve against)'
+      limit:
+        type: number
+        minimum: 0
+        description: '0 is a legal ceiling (e.g. zero baked secrets). With direction=max it is a ceiling (observed <= limit passes); with direction=min a floor (observed >= limit passes).'
+        x-consumer: 'the single G6 compare bound (the grep-gate: the only legal home of this number); the observed measurement is compared against it'
+      unit:
+        type: string
+        minLength: 1
+        x-forbid-placeholder: true
+        x-consumer: 'reporting: rendered in every breach message (e.g. ms, usd, percent, mb) -- advisory only, the gate does not convert units'
+      direction:
+        enum:
+          - max
+          - min
+        x-consumer: 'G6 comparator dispatch: max -> observed <= limit (ceiling), min -> observed >= limit (floor)'
+      owner:
+        type: string
+        pattern: '^@[A-Za-z0-9_./-]+$'
+        x-consumer: 'page target on a budget breach; reporting accountability column'
+
+x-valid-cases:
+  - name: latency-ceiling-and-availability-floor
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets:
+        api_p95_latency:
+          description: '95th-percentile API response time under nominal load.'
+          limit: 300
+          unit: ms
+          direction: max
+          owner: '@org/api-team'
+        service_availability:
+          limit: 99.9
+          unit: percent
+          direction: min
+          owner: '@org/platform-sre'
+          _rationale: 'A floor: measured availability BELOW 99.9% breaches (annotation keys are legal in instances).'
+
+x-anti-cases:
+  - name: budget-without-limit
+    must_fail_with: E-REQUIRED
+    note: 'With no bound the NFR could never block -- the gate would pass vacuously.'
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets:
+        api_p95_latency:
+          unit: ms
+          direction: max
+          owner: '@org/api-team'
+  - name: direction-not-max-or-min
+    must_fail_with: E-ENUM
+    note: 'The comparator only dispatches on max/min; any other word has no consumer.'
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets:
+        api_p95_latency:
+          limit: 300
+          unit: ms
+          direction: ceiling
+          owner: '@org/api-team'
+  - name: negative-limit
+    must_fail_with: E-RANGE
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets:
+        api_p95_latency:
+          limit: -1
+          unit: ms
+          direction: max
+          owner: '@org/api-team'
+  - name: empty-budget-set
+    must_fail_with: E-MIN-PROPS
+    note: 'An empty budgets map passes every NFR check vacuously.'
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets: {}
+  - name: query-embedded-in-entry
+    must_fail_with: E-UNKNOWN-FIELD
+    note: 'Anti-bloat: entries are contracts, not measurement stores; sql: has no gate consumer. (_sql_note: would be the legal annotation form.)'
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets:
+        api_p95_latency:
+          limit: 300
+          unit: ms
+          direction: max
+          owner: '@org/api-team'
+          sql: 'SELECT quantile(0.95, latency_ms) FROM requests'
+  - name: placeholder-unit
+    must_fail_with: E-PLACEHOLDER
+    instance:
+      schema: 'sdlc/nfr-budget@1'
+      owner: '@org/platform-sre'
+      budgets:
+        api_p95_latency:
+          limit: 300
+          unit: 'REPLACE-ME'
+          direction: max
+          owner: '@org/api-team'
