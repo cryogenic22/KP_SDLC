@@ -45,6 +45,12 @@ _MARK = "TO" + "DO"
 _COPY_IGNORE = shutil.ignore_patterns(
     ".git", ".claude", "__pycache__", ".pytest_cache", ".quality-reports",
     "node_modules", "*.sarif", "nul",
+    # Build artifacts a `pip install .` leaves in the tree (self-CI installs the
+    # package before `make test`). They are not source: build/lib holds copies
+    # of every module, which would double-count the fixture scan, and an
+    # egg-info dir is packaging metadata. Excluding them keeps the fixture a
+    # faithful copy of the SOURCE regardless of whether the tree has been built.
+    "build", "dist", "*.egg-info",
 )
 
 _ADR_TOTALS_RE = re.compile(

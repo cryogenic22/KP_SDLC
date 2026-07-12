@@ -12,10 +12,16 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-# PyYAML is a DEV-only oracle: the miniyaml strict-subset loader is
-# differentially tested against yaml.safe_load over every shipped document
-# (schemas/tests/test_schemas_e17.py test h). Runtime stays zero-dependency.
-dev = ["PyYAML>=6"]
+# DEV-only test surface; runtime stays zero-dependency.
+#   PyYAML — the miniyaml strict-subset loader's differential oracle: it is
+#     tested against yaml.safe_load over every shipped document
+#     (schemas/tests/test_schemas_e17.py test h). Absent, that test SKIPs;
+#     installing [dev] in CI makes the differential actually run.
+#   pytest — the component suites (runtime-verify/eval-engine/input-gate/
+#     contract-gate) are pytest files; `make test` runs each via `python
+#     <file>`, whose __main__ calls pytest.main. CI installs [dev] before the
+#     blocking suite so those suites are not silently un-run.
+dev = ["PyYAML>=6", "pytest>=8"]
 
 [project.scripts]
 qg = "quality_gate:main"

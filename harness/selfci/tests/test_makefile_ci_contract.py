@@ -22,6 +22,17 @@ _MAKEFILE = _ROOT / "Makefile"
 
 _SARIF_PATH_RE = re.compile(r"--sarif[ \t]+(\S+)")
 
+# Every merged Tier-C component whose suite must run in the blocking `make test`
+# (each dogfoods E1.7; PR-time green alone is not durable regression protection).
+_COMPONENT_TEST_TARGETS = (
+    "test-schemas",
+    "test-runtime-verify",
+    "test-eval-engine",
+    "test-input-gate",
+    "test-contract-gate",
+    "test-observatory",
+)
+
 
 def _makefile_text() -> str:
     """Makefile text, CRLF-normalized."""
@@ -80,6 +91,50 @@ def test_sarif_target_creates_output_dir():
         "the directory is gitignored and `make clean` removes it, so a fresh "
         "checkout crashes with FileNotFoundError: '{}/qg.sarif'".format(parent)
     )
+
+
+def _test_prereqs(text):
+    """The full `test:` prerequisite list, joining Make backslash-continuations
+    (the `test` target spans several lines once the component suites are added).
+    Collapse ``\\``-continuations to one logical line first, then read it."""
+    joined = re.sub(r"\\\n\s*", " ", text)
+    m = re.search(r"^test:([^\n]*)", joined, flags=re.MULTILINE)
+    if not m:
+        return []
+    return m.group(1).split("##")[0].split()
+
+
+def test_make_test_covers_component_suites():
+    """The blocking `make test` must ACTUALLY RUN every merged Tier-C component
+    suite, not just list it. Each component dogfoods E1.7, and its PR-time green
+    gives no durable regression protection unless CI re-runs it.
+
+    Each target must invoke ``python -m pytest <dir>/tests`` — NOT the per-file
+    ``python <file>`` loop the older targets use. That loop no-ops on a test file
+    with no ``__main__`` self-runner (two observatory files are pytest-fixture-
+    only), running ZERO tests while exiting 0 — a vacuous green that ships a
+    broken component. pytest collects+runs every test regardless of ``__main__``
+    and exits 5 on zero collection, so a renamed/empty dir also fails closed.
+    Asserting the pytest idiom is what makes this contract about execution, not
+    just the presence of a loop shape."""
+    text = _makefile_text()
+    prereqs = _test_prereqs(text)
+    assert prereqs, "could not parse the 'test' target prerequisites"
+    for target in _COMPONENT_TEST_TARGETS:
+        assert target in prereqs, (
+            f"'test' prerequisites {prereqs} omit {target} — that component "
+            "suite never runs in CI's blocking step"
+        )
+        recipe = _recipe(target, text)
+        assert recipe, f"Makefile has no '{target}' target"
+        assert "python -m pytest" in recipe, (
+            f"{target} recipe does not invoke `python -m pytest` — a `python "
+            "<file>` loop runs ZERO tests on a file lacking a __main__ runner "
+            "(observatory's regression) yet exits 0"
+        )
+        assert "/tests/" in recipe, (
+            f"{target} recipe does not point pytest at a tests dir"
+        )
 
 
 def test_make_test_covers_harness_tests():

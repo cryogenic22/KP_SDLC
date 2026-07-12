@@ -124,6 +124,33 @@ def test_engine_paths_not_vendor_paths():
     assert "python harness/selfci/gen_quality_workflow.py --check" in rendered
 
 
+def test_mechanical_installs_deps_before_suites():
+    """The mechanical job must `pip install .[dev]` BEFORE `make test`: the
+    component suites are pytest files run via `python <file>`, so on a bare
+    runner without pytest the blocking suite step would error. Ordering is
+    load-bearing — a suite step before install would fail closed on import."""
+    rendered = render(_tmpl_text())
+    install = rendered.find("pip install .[dev]")
+    make_test = rendered.find("run: make test")
+    assert install != -1, "mechanical job never runs `pip install .[dev]`"
+    assert make_test != -1, "mechanical job never runs `make test`"
+    assert install < make_test, (
+        "`pip install .[dev]` must precede `make test` (deps installed first)"
+    )
+
+
+def test_mechanical_smokes_gate_entrypoints():
+    """The mechanical job must exercise the installed gate console entry points
+    (sdlc-schemas/rv/ee/g1/g2 resolve) after install — a packaging break that
+    leaves an entry point unresolvable is invisible to source-run unit tests."""
+    rendered = render(_tmpl_text())
+    assert "Console entry points resolve (smoke)" in rendered
+    assert "for cmd in sdlc-schemas rv ee g1 g2 kp-observatory" in rendered, (
+        "entry-point smoke does not exercise all component console scripts "
+        "(incl. kp-observatory, whose suite is fixture-only)"
+    )
+
+
 def test_selfci_surface_is_qg_error_free():
     """The self-CI code must not itself add Quality Gate errors: E0.6 commits
     the QG baseline next, and an error born in the very PR that installs QG

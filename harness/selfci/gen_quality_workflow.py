@@ -166,6 +166,39 @@ _SARIF_STEP = (
     "        continue-on-error: true"
 )
 
+# A clean `pip install .[dev]` before the blocking suite: it declares+installs
+# the test deps (pytest for the component suites; PyYAML for the miniyaml
+# differential) AND proves the package itself installs, so a packaging break
+# fails CI rather than lurking until a consumer hits it.
+_INSTALL_STEP = (
+    "      - name: Install engine + test deps (pip install .[dev])\n"
+    "        run: |\n"
+    "          python -m pip install --upgrade pip\n"
+    "          pip install .[dev]\n"
+    "          # pip builds in-tree; the package is now in site-packages, so drop\n"
+    "          # the transient build/ + *.egg-info. Otherwise QG/CK (and the\n"
+    "          # test_self_baseline fixture) would scan build/lib's duplicated\n"
+    "          # source copies. rm -f ignores the globs that do not expand.\n"
+    "          rm -rf build dist ./*.egg-info ./*/*.egg-info"
+)
+
+# Each component's installed console entry point must resolve and import
+# (argparse -h exits 0). This catches the packaging class of break — a renamed
+# package leaving an entry point unresolvable — that unit tests (run from
+# source) miss. The green/red FIRING heartbeat (a gate blocking a bad overlay
+# via its entry point) is a follow-up PR with a shared fixture overlay.
+_SMOKE_STEP = (
+    "      - name: Console entry points resolve (smoke)\n"
+    "        run: |\n"
+    "          rc=0\n"
+    "          for cmd in sdlc-schemas rv ee g1 g2 kp-observatory; do\n"
+    "            if \"$cmd\" -h > /dev/null 2>&1; then ec=0; else ec=$?; fi\n"
+    "            echo \"$cmd -h -> exit $ec\"\n"
+    "            [ \"$ec\" -eq 0 ] || rc=1\n"
+    "          done\n"
+    "          exit $rc"
+)
+
 
 def _ck_step(profile: Mapping) -> str:
     """The CK step: blocking (the engine default since E0.6), or masked.
@@ -207,6 +240,8 @@ def _engine_steps(profile: Mapping) -> List[str]:
             "      - name: quality.yml in sync with quality.yml.tmpl + ENGINE_PROFILE\n"
             "        run: python harness/selfci/gen_quality_workflow.py --check"
         ),
+        _INSTALL_STEP,
+        _SMOKE_STEP,
         (
             "      - name: Test suites (blocking)\n"
             "        run: make test"
