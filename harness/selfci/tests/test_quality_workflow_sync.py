@@ -168,7 +168,8 @@ _SMOKE_REQUIRED_LINES = (
 
 def _smoke_step_lines(workflow: str) -> list[str]:
     """Stripped, non-empty lines of the smoke step (its `- name:`/`run:` block)."""
-    return [ln.strip() for ln in _smoke_step(workflow).split("\n") if ln.strip()]
+    stripped = (ln.strip() for ln in _smoke_step(workflow).split("\n"))
+    return [ln for ln in stripped if ln]
 
 
 def _ordered_subsequence(required: tuple, lines: list) -> bool:
@@ -178,11 +179,8 @@ def _ordered_subsequence(required: tuple, lines: list) -> bool:
 
 
 def _smoke_propagates_failure(workflow: str) -> bool:
-    """True iff the smoke step contains, as exact standalone lines IN ORDER, the
-    init / -h-probe / `|| rc=1` / `exit $rc` commands — so a red entry point fails
-    the job. Exact-line (not substring) matching defeats masks that keep the text
-    but drop the effect: `echo "exit $rc"`, `... || echo rc=1`, or a bare
-    `exit 0`."""
+    """True iff the smoke step has the exact init / `"$cmd" -h` / `|| rc=1` /
+    `exit $rc` lines in order — so a masked variant (`exit 0`, echoed) fails."""
     return _ordered_subsequence(_SMOKE_REQUIRED_LINES, _smoke_step_lines(workflow))
 
 
