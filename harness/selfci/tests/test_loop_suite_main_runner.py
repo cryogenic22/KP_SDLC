@@ -24,7 +24,9 @@ _ROOT = Path(__file__).resolve().parents[3]
 _MAKEFILE = _ROOT / "Makefile"
 
 _MAIN_RE = re.compile(r"""if\s+__name__\s*==\s*['"]__main__['"]\s*:""")
-_EXIT_RE = re.compile(r"SystemExit|sys\.exit")
+# A failure-capable exit: SystemExit/sys.exit whose argument is NOT literally 0,
+# so an always-green `sys.exit(0)` / `SystemExit(0)` does not qualify.
+_EXIT_RE = re.compile(r"(?:SystemExit|sys\.exit)\s*\(\s*(?!0\s*\))")
 
 
 def _makefile_text() -> str:
@@ -58,12 +60,21 @@ def _fragile_loop_test_files() -> list[Path]:
     return files
 
 
-def _has_main_runner(text: str) -> bool:
-    return bool(_MAIN_RE.search(text))
+def _main_region(text: str) -> str:
+    """Text from the `if __name__ == "__main__":` line to EOF ('' if absent)."""
+    m = _MAIN_RE.search(text)
+    return text[m.start():] if m else ""
 
 
-def _propagates_failure(text: str) -> bool:
-    return bool(_EXIT_RE.search(text))
+def _runs_tests(region: str) -> bool:
+    """Evidence the `__main__` block actually invokes the file's tests (the repo's
+    runner iterates `globals()` for `test_*`), rather than just printing/exiting."""
+    return "globals(" in region or "test_" in region
+
+
+def _has_failure_capable_exit(region: str) -> bool:
+    """The `__main__` block exits with a data-dependent / non-zero code on failure."""
+    return bool(_EXIT_RE.search(region))
 
 
 def _rel(path: Path) -> str:
@@ -71,33 +82,51 @@ def _rel(path: Path) -> str:
 
 
 def test_every_fragile_loop_test_file_has_a_main_runner():
-    """Every `python <file>`-loop test file must carry a failure-propagating
-    `__main__` runner — else it imports, runs zero tests, and exits 0."""
+    """Every `python <file>`-loop test file must carry a `__main__` runner that
+    ACTUALLY RUNS its tests AND exits non-zero on failure — else it imports, runs
+    zero tests, and exits 0 (vacuous green). Checking mere presence of a
+    `__main__` line is not enough; a `print(); sys.exit(0)` runner would slip."""
     files = _fragile_loop_test_files()
     assert files, "found no `python <file>`-loop test files — has the Makefile idiom changed?"
     offenders = []
     for path in files:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if not _has_main_runner(text):
+        region = _main_region(path.read_text(encoding="utf-8", errors="replace"))
+        if not region:
             offenders.append(f'{_rel(path)}: no `if __name__ == "__main__":` runner')
-        elif not _propagates_failure(text):
-            offenders.append(f"{_rel(path)}: `__main__` runner never exits non-zero on failure")
+        elif not _runs_tests(region):
+            offenders.append(f"{_rel(path)}: `__main__` block does not run the tests (no test_/globals reference)")
+        elif not _has_failure_capable_exit(region):
+            offenders.append(f"{_rel(path)}: `__main__` runner has no failure-capable exit (only `exit(0)`?)")
     assert not offenders, (
         "these suites run via the Makefile `python <file>` loop, which imports a "
         "file and runs ZERO tests (exit 0 — vacuous green) unless it has a "
-        "failure-propagating `__main__` runner:\n" + "\n".join(offenders)
+        "`__main__` runner that invokes the tests and exits non-zero on failure:\n"
+        + "\n".join(offenders)
     )
 
 
 def test_main_runner_detector_has_teeth():
-    """Anti-case: the detectors must accept a real runner and reject a
-    fixture-only file (the exact shape that no-ops under `python <file>`)."""
-    assert _has_main_runner('if __name__ == "__main__":\n    run()')
-    assert _has_main_runner("if __name__ == '__main__':\n    run()")
-    assert not _has_main_runner("def test_x():\n    assert True\n")
-    assert _propagates_failure("raise SystemExit(1 if failed else 0)")
-    assert _propagates_failure("    sys.exit(rc)")
-    assert not _propagates_failure("print('done')\n")
+    """Anti-case: accept a real runner; reject (a) a fixture-only file with no
+    `__main__`, and (b) a `__main__` that runs no tests and always exits 0 — the
+    exact vacuous-green shapes the guard claims to forbid."""
+    real = (
+        'if __name__ == "__main__":\n'
+        '    for name, fn in [(n, o) for n, o in globals().items() if n.startswith("test_")]:\n'
+        '        fn()\n'
+        '    raise SystemExit(1 if failed else 0)\n'
+    )
+    region = _main_region(real)
+    assert region and _runs_tests(region) and _has_failure_capable_exit(region)
+    # (a) no __main__ at all → would no-op under `python <file>`
+    assert not _main_region("def test_x():\n    assert True\n")
+    # (b) __main__ that prints and always exits 0 → still vacuous, must fail
+    fake_region = _main_region('if __name__ == "__main__":\n    print("ok")\n    sys.exit(0)\n')
+    assert fake_region, "sanity: the fake still has a __main__ line"
+    assert not (_runs_tests(fake_region) and _has_failure_capable_exit(fake_region)), (
+        "a __main__ that runs no tests and exits 0 must not pass the guard"
+    )
+    assert not _has_failure_capable_exit('if __name__ == "__main__":\n    sys.exit(0)')
+    assert _has_failure_capable_exit("raise SystemExit(1 if failed else 0)")
 
 
 # ── Runner ────────────────────────────────────────────────────────────

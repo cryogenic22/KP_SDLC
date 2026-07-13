@@ -24,44 +24,73 @@ import prepush_quality_gate as gate
 
 
 def test_is_git_push_fires_only_on_real_pushes():
-    """Detection must catch pushes (incl. global flags, chained commands) and
-    reject look-alikes — a false positive would gate unrelated Bash calls."""
+    """Detection must catch pushes across the spellings a model actually emits —
+    metachar-terminated, env/path/sudo-prefixed, chained — while rejecting
+    look-alikes. A false NEGATIVE silently un-gates a real push (the worse
+    direction); a false positive merely runs QG on a non-push."""
     for yes in (
         "git push",
         "git push origin main",
         "git push -u origin feat/x",
         "git -C /repo push",
+        "git -c user.name=x push",              # value-taking global option
         "  git   push --force-with-lease ",
         "cd repo && git push",
         "git commit -m x && git push origin main",
+        "git push; echo done",                  # metachar-terminated (was missed)
+        "git push;",
+        "git push|cat",
+        "(git push)",
+        "HUSKY=0 git push",                     # env-prefixed (was missed)
+        "FOO=bar BAZ=1 git push",
+        "sudo git push",                        # wrapper (was missed)
+        "/usr/bin/git push",                    # path-prefixed (was missed)
+        "git status && git push",
     ):
         assert gate.is_git_push(yes), f"should detect push: {yes!r}"
     for no in (
         "git status",
         "git log --grep=push",
         "git commit -m 'push later'",
-        "echo git push",           # git not at a command boundary
+        "echo git push",           # git not in command position
         "gitpush",
+        "git pushup",              # not the push subcommand
         "python push_tool.py",
     ):
         assert not gate.is_git_push(no), f"should NOT detect push: {no!r}"
 
 
-def test_verdict_mapping_blocks_only_on_exit_1():
-    """Exit 0 -> pass; exit 1 -> block (with a finding summary); anything else ->
-    skip (fail open). This is the anti-vacuity core: the block path must fire on
-    a real QG failure, and infra errors must not."""
+def test_verdict_mapping_fails_open_except_on_real_violation():
+    """block ONLY when QG completed a real scan and reported failure (exit 1,
+    parseable JSON, files_checked>0, passed=false). A QG crash also exits 1, so
+    exit 1 without a parseable verdict (or a zero-file scan) must SKIP (fail
+    open) — otherwise a broken QG wedges every push (the reviewer's MAJOR).
+    Note: check-mode `issues` also lists baselined debt, so the verdict keys off
+    `passed`, not error-counting."""
     assert gate.verdict_for(0, "")[0] == "pass"
-    ratchet = json.dumps({"issues": [
-        {"severity": "error", "file": "a.py", "line": 3,
-         "rule": "baseline_ratchet", "message": "warnings 4 > baselined 3"},
-        {"severity": "warning", "file": "b.py", "line": 9, "rule": "x", "message": "y"},
-    ]})
-    verdict, detail = gate.verdict_for(1, ratchet)
+    failed = json.dumps({
+        "passed": False,
+        "stats": {"files_checked": 42},
+        "prs": 92.0,
+        "issues": [
+            {"severity": "error", "rule": "baseline_ratchet",
+             "message": "warnings 4 > baselined 3"},
+            {"severity": "error", "rule": "function_size",   # baselined debt, ignored
+             "message": "too long"},
+        ],
+    })
+    verdict, detail = gate.verdict_for(1, failed)
     assert verdict == "block"
-    assert "baseline_ratchet" in detail and "1 blocking QG finding" in detail
+    assert "baseline_ratchet" in detail        # ratchet signal surfaced...
+    assert "function_size" not in detail        # ...but baselined debt is not
+    # exit 1 but a QG CRASH (non-JSON stdout) -> skip, NOT block
+    assert gate.verdict_for(1, "Traceback (most recent call last):\nRuntimeError")[0] == "skip"
+    # exit 1 valid JSON but no `passed` verdict -> skip (incomplete run)
+    assert gate.verdict_for(1, json.dumps({"stats": {"files_checked": 5}}))[0] == "skip"
+    # exit 1 with zero files scanned -> skip (infra, not a real violation)
+    assert gate.verdict_for(1, json.dumps({"passed": False, "stats": {"files_checked": 0}}))[0] == "skip"
     assert gate.verdict_for(2, "")[0] == "skip"      # argparse/config error
-    assert gate.verdict_for(139, "")[0] == "skip"    # crash
+    assert gate.verdict_for(139, "")[0] == "skip"    # crash signal
 
 
 def test_run_gate_fails_open_when_qg_absent():
@@ -69,6 +98,49 @@ def test_run_gate_fails_open_when_qg_absent():
     with tempfile.TemporaryDirectory() as d:
         verdict, _ = gate.run_gate(Path(d))
         assert verdict == "skip"
+
+
+def test_run_gate_resolves_repo_root_from_subdir():
+    """A push whose cwd is a repo SUBDIR is still gated: the upward walk finds
+    the real root, and the live repo does not block."""
+    assert gate._resolve_root(_HERE.parent) == _ROOT
+    verdict, detail = gate.run_gate(_HERE.parent)  # harness/selfci/tests
+    assert verdict in ("pass", "skip"), f"subdir push mis-verdict: {detail}"
+
+
+def _make_stub_repo(root: Path, qg_body: str) -> None:
+    """A throwaway repo whose quality_gate.py is `qg_body` (ignores argv)."""
+    (root / "quality-gate").mkdir(parents=True, exist_ok=True)
+    (root / "quality-gate" / "quality_gate.py").write_text(qg_body, encoding="utf-8")
+    (root / ".quality-gate.baseline.json").write_text("{}", encoding="utf-8")
+
+
+def test_run_gate_blocks_on_real_qg_exit_1():
+    """End-to-end teeth (not a stubbed verdict): a real QG subprocess that exits
+    1 with an error finding drives run_gate to 'block'."""
+    body = (
+        "import json, sys\n"
+        "print(json.dumps({'passed': False, 'stats': {'files_checked': 3}, 'issues': ["
+        "{'severity': 'error', 'file': 'x.py', 'line': 1, "
+        "'rule': 'baseline_ratchet', 'message': 'warnings 4 > baselined 3'}]}))\n"
+        "sys.exit(1)\n"
+    )
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _make_stub_repo(root, body)
+        verdict, detail = gate.run_gate(root)
+        assert verdict == "block", f"real QG exit-1 with errors must block: {detail}"
+        assert "baseline_ratchet" in detail
+
+
+def test_run_gate_fails_open_on_real_qg_crash():
+    """End-to-end teeth for the MAJOR fix: a QG that crashes also exits 1, but
+    run_gate must SKIP (fail open), not block — a broken QG can't wedge pushes."""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        _make_stub_repo(root, "raise RuntimeError('QG import blew up')\n")
+        verdict, _ = gate.run_gate(root)
+        assert verdict == "skip", "a QG crash (exit 1, no JSON) must fail OPEN, not block"
 
 
 def test_decide_allows_non_push_and_non_bash():
