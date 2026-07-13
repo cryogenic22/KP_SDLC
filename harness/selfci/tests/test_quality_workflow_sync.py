@@ -124,6 +124,138 @@ def test_engine_paths_not_vendor_paths():
     assert "python harness/selfci/gen_quality_workflow.py --check" in rendered
 
 
+# ── Semantic predicates over the RENDERED workflow ────────────────────
+# Assert the GUARANTEE (a real install command; a smoke loop that aggregates and
+# exits nonzero), not merely that a label mentions it — so replacing the command
+# with `true`, or `exit $rc` with `exit 0`, fails closed instead of passing.
+
+# A real `pip install .[dev]` RUN line (indented, standalone). NOT the step's
+# `name:` label, which also carries the text `(pip install .[dev])` but ends in a
+# `)`, so the end-anchored match excludes it.
+_INSTALL_RUN_RE = re.compile(r"(?m)^[ \t]+pip install \.\[dev\]\s*$")
+
+
+def _smoke_step(workflow: str) -> str:
+    """The 'Console entry points resolve (smoke)' step, sliced from its `- name:`
+    header to the next 6-space-indented step boundary ('' if absent)."""
+    marker = "- name: Console entry points resolve (smoke)"
+    i = workflow.find(marker)
+    if i == -1:
+        return ""
+    rest = workflow[i + len(marker):]
+    nxt = re.search(r"\n      - ", rest)
+    return rest[: nxt.start()] if nxt else rest
+
+
+def _install_is_real(workflow: str) -> bool:
+    """True iff the workflow runs `pip install .[dev]` as an actual command line,
+    not only inside a step label."""
+    return _INSTALL_RUN_RE.search(workflow) is not None
+
+
+# The smoke step's load-bearing commands, as EXACT normalized (stripped) lines in
+# required order: init, the -h probe, the `|| rc=1` aggregation and `exit $rc`.
+# Substring membership was defeatable — `echo "exit $rc"` or `... || echo rc=1`
+# keep the text but drop the effect. Exact standalone-line matching rejects both.
+_SMOKE_REQUIRED_LINES = (
+    "rc=0",
+    "for cmd in sdlc-schemas rv ee g1 g2 kp-observatory; do",
+    'if "$cmd" -h > /dev/null 2>&1; then ec=0; else ec=$?; fi',
+    '[ "$ec" -eq 0 ] || rc=1',
+    "exit $rc",
+)
+
+
+def _smoke_step_lines(workflow: str) -> list[str]:
+    """Stripped, non-empty lines of the smoke step (its `- name:`/`run:` block)."""
+    stripped = (ln.strip() for ln in _smoke_step(workflow).split("\n"))
+    return [ln for ln in stripped if ln]
+
+
+def _ordered_subsequence(required: tuple, lines: list) -> bool:
+    """True iff every `required` entry appears as an EXACT line, in order."""
+    it = iter(lines)
+    return all(any(req == ln for ln in it) for req in required)
+
+
+def _smoke_propagates_failure(workflow: str) -> bool:
+    """True iff the smoke step has the exact init / `"$cmd" -h` / `|| rc=1` /
+    `exit $rc` lines in order — so a masked variant (`exit 0`, echoed) fails."""
+    return _ordered_subsequence(_SMOKE_REQUIRED_LINES, _smoke_step_lines(workflow))
+
+
+def test_mechanical_installs_deps_before_smoke_and_suites():
+    """The mechanical job must run a REAL `pip install .[dev]` command (the
+    component suites run via `python -m pytest <dir>`, so a bare runner without
+    pytest errors), and it must precede both the entry-point smoke and the
+    blocking `make test`. Matching the actual run line — not the step's
+    `(pip install .[dev])` label — means replacing the command with `true` fails
+    this contract instead of passing on the label alone."""
+    rendered = render(_tmpl_text())
+    assert _install_is_real(rendered), (
+        "mechanical job has no real `pip install .[dev]` run command "
+        "(a step label mentioning it is not enough)"
+    )
+    install = _INSTALL_RUN_RE.search(rendered).start()
+    smoke = rendered.find("Console entry points resolve (smoke)")
+    make_test = rendered.find("run: make test")
+    assert smoke != -1, "mechanical job never runs the entry-point smoke"
+    assert make_test != -1, "mechanical job never runs `make test`"
+    assert install < smoke < make_test, (
+        "order must be install → smoke → `make test`; got positions "
+        f"install={install}, smoke={smoke}, make_test={make_test}"
+    )
+
+
+def test_install_contract_rejects_masked_install():
+    """Anti-case (teeth): replacing the real install command with `true` — while
+    keeping the step label — must FAIL the real-install predicate (Major #2)."""
+    rendered = render(_tmpl_text())
+    assert _install_is_real(rendered)  # positive control
+    masked = _INSTALL_RUN_RE.sub("          true", rendered, count=1)
+    assert "pip install .[dev])" in masked, "label should survive (that is the trap)"
+    assert not _install_is_real(masked), (
+        "predicate accepted a workflow whose install command is `true` — it is "
+        "matching the step label, not the command"
+    )
+
+
+def test_mechanical_smokes_gate_entrypoints():
+    """The mechanical job must exercise the installed gate console entry points
+    (sdlc-schemas/rv/ee/g1/g2/kp-observatory resolve) after install — a packaging
+    break that leaves an entry point unresolvable is invisible to source-run unit
+    tests — AND the loop must propagate failure (aggregate + nonzero exit)."""
+    rendered = render(_tmpl_text())
+    assert "Console entry points resolve (smoke)" in rendered
+    assert "for cmd in sdlc-schemas rv ee g1 g2 kp-observatory" in rendered, (
+        "entry-point smoke does not exercise all component console scripts "
+        "(incl. kp-observatory, whose suite is fixture-only)"
+    )
+    assert _smoke_propagates_failure(rendered), (
+        'smoke step does not aggregate + exit nonzero ("$cmd" -h, rc=1, '
+        "exit $rc) — an unresolvable entry point would be masked"
+    )
+
+
+def test_smoke_contract_rejects_masked_failure():
+    """Anti-case (teeth): every way to keep the smoke text but drop its EFFECT
+    must FAIL the propagation predicate — a bare `exit 0`, an echoed exit
+    (`echo "exit $rc"`), and an echoed aggregation (`|| echo rc=1`). The last two
+    are the reviewer's escalation: substring membership passed them because the
+    literal `exit $rc` / `rc=1` text survives inside the echo."""
+    rendered = render(_tmpl_text())
+    assert _smoke_propagates_failure(rendered)  # positive control
+    for label, masked in (
+        ("exit 0", rendered.replace("exit $rc", "exit 0")),
+        ('echo "exit $rc"', rendered.replace("exit $rc", 'echo "exit $rc"')),
+        ("|| echo rc=1", rendered.replace("|| rc=1", "|| echo rc=1")),
+    ):
+        assert not _smoke_propagates_failure(masked), (
+            f"predicate accepted a smoke loop masked with `{label}` — it is "
+            "matching text, not exact effect-bearing lines"
+        )
+
+
 def test_selfci_surface_is_qg_error_free():
     """The self-CI code must not itself add Quality Gate errors: E0.6 commits
     the QG baseline next, and an error born in the very PR that installs QG

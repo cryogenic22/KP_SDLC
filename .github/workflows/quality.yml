@@ -41,6 +41,26 @@ jobs:
       - name: quality.yml in sync with quality.yml.tmpl + ENGINE_PROFILE
         run: python harness/selfci/gen_quality_workflow.py --check
 
+      - name: Install engine + test deps (pip install .[dev])
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+          # pip builds in-tree; the package is now in site-packages, so drop
+          # the transient build/ + *.egg-info. Otherwise QG/CK (and the
+          # test_self_baseline fixture) would scan build/lib's duplicated
+          # source copies. rm -f ignores the globs that do not expand.
+          rm -rf build dist ./*.egg-info ./*/*.egg-info
+
+      - name: Console entry points resolve (smoke)
+        run: |
+          rc=0
+          for cmd in sdlc-schemas rv ee g1 g2 kp-observatory; do
+            if "$cmd" -h > /dev/null 2>&1; then ec=0; else ec=$?; fi
+            echo "$cmd -h -> exit $ec"
+            [ "$ec" -eq 0 ] || rc=1
+          done
+          exit $rc
+
       - name: Test suites (blocking)
         run: make test
 
