@@ -110,7 +110,8 @@ test-harness: ## Run harness tests (structural-floor, process, selfci)
 # would import them and run ZERO tests while exiting 0 (a vacuous green that
 # ships a broken component). pytest collects+runs every test_* regardless of a
 # __main__ block AND exits 5 on zero collection, so an empty/renamed tests dir
-# fails closed too — vacuity is impossible.
+# fails closed too — zero-collection vacuity is prevented (masking vacuity is
+# guarded separately by the workflow/Makefile contract tests, not here).
 test-schemas: ## Run E1.7 schemas tests
 	@echo "=== Schemas (E1.7) Tests ==="
 	python -m pytest $(SCHEMAS_DIR)/tests/ -q

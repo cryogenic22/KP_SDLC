@@ -153,12 +153,37 @@ def _install_is_real(workflow: str) -> bool:
     return _INSTALL_RUN_RE.search(workflow) is not None
 
 
+# The smoke step's load-bearing commands, as EXACT normalized (stripped) lines in
+# required order: init, the -h probe, the `|| rc=1` aggregation and `exit $rc`.
+# Substring membership was defeatable — `echo "exit $rc"` or `... || echo rc=1`
+# keep the text but drop the effect. Exact standalone-line matching rejects both.
+_SMOKE_REQUIRED_LINES = (
+    "rc=0",
+    "for cmd in sdlc-schemas rv ee g1 g2 kp-observatory; do",
+    'if "$cmd" -h > /dev/null 2>&1; then ec=0; else ec=$?; fi',
+    '[ "$ec" -eq 0 ] || rc=1',
+    "exit $rc",
+)
+
+
+def _smoke_step_lines(workflow: str) -> list[str]:
+    """Stripped, non-empty lines of the smoke step (its `- name:`/`run:` block)."""
+    return [ln.strip() for ln in _smoke_step(workflow).split("\n") if ln.strip()]
+
+
+def _ordered_subsequence(required: tuple, lines: list) -> bool:
+    """True iff every `required` entry appears as an EXACT line, in order."""
+    it = iter(lines)
+    return all(any(req == ln for ln in it) for req in required)
+
+
 def _smoke_propagates_failure(workflow: str) -> bool:
-    """True iff the smoke step invokes ``"$cmd" -h``, aggregates per-cmd failures
-    (``rc=1``) and exits nonzero on any (``exit $rc``) — so a red entry point
-    fails the job rather than being masked by ``exit 0``."""
-    step = _smoke_step(workflow)
-    return bool(step) and '"$cmd" -h' in step and "rc=1" in step and "exit $rc" in step
+    """True iff the smoke step contains, as exact standalone lines IN ORDER, the
+    init / -h-probe / `|| rc=1` / `exit $rc` commands — so a red entry point fails
+    the job. Exact-line (not substring) matching defeats masks that keep the text
+    but drop the effect: `echo "exit $rc"`, `... || echo rc=1`, or a bare
+    `exit 0`."""
+    return _ordered_subsequence(_SMOKE_REQUIRED_LINES, _smoke_step_lines(workflow))
 
 
 def test_mechanical_installs_deps_before_smoke_and_suites():
@@ -215,15 +240,22 @@ def test_mechanical_smokes_gate_entrypoints():
 
 
 def test_smoke_contract_rejects_masked_failure():
-    """Anti-case (teeth): replacing `exit $rc` with `exit 0` (masking a failed
-    entry point) must FAIL the failure-propagation predicate (Major #3)."""
+    """Anti-case (teeth): every way to keep the smoke text but drop its EFFECT
+    must FAIL the propagation predicate — a bare `exit 0`, an echoed exit
+    (`echo "exit $rc"`), and an echoed aggregation (`|| echo rc=1`). The last two
+    are the reviewer's escalation: substring membership passed them because the
+    literal `exit $rc` / `rc=1` text survives inside the echo."""
     rendered = render(_tmpl_text())
     assert _smoke_propagates_failure(rendered)  # positive control
-    masked = rendered.replace("exit $rc", "exit 0")
-    assert not _smoke_propagates_failure(masked), (
-        "predicate accepted a smoke loop that exits 0 regardless of per-cmd "
-        "failures — it is checking the header, not propagation"
-    )
+    for label, masked in (
+        ("exit 0", rendered.replace("exit $rc", "exit 0")),
+        ('echo "exit $rc"', rendered.replace("exit $rc", 'echo "exit $rc"')),
+        ("|| echo rc=1", rendered.replace("|| rc=1", "|| echo rc=1")),
+    ):
+        assert not _smoke_propagates_failure(masked), (
+            f"predicate accepted a smoke loop masked with `{label}` — it is "
+            "matching text, not exact effect-bearing lines"
+        )
 
 
 def test_selfci_surface_is_qg_error_free():
