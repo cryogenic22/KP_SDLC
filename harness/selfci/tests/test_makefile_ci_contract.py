@@ -22,26 +22,40 @@ _MAKEFILE = _ROOT / "Makefile"
 
 _SARIF_PATH_RE = re.compile(r"--sarif[ \t]+(\S+)")
 
-# The pytest-idiom component targets whose recipe must invoke `python -m pytest`
-# (fail-closed on zero collection). This tuple guards the IDIOM; COMPLETENESS —
-# that every on-disk suite is wired into `make test` at all — is enforced
-# separately and disk-derived by test_every_component_suite_on_disk_is_wired, so
-# a newly-added-but-unwired component fails closed there instead of merging
-# silently (a hardcoded list can never catch that — the fix-engine gap, ADR 0001).
-_COMPONENT_TEST_TARGETS = (
-    "test-schemas",
-    "test-runtime-verify",
-    "test-eval-engine",
-    "test-input-gate",
-    "test-contract-gate",
-    "test-observatory",
-    "test-fix-engine",
-)
+# Each pytest-idiom suite target mapped to the ONE tests dir it must run. Pinning
+# the exact path (not just "contains python -m pytest") rejects a remap — pointing
+# test-runtime-verify at schemas/tests so one suite runs twice and another never
+# runs — and, with the unmasked-command predicate below, a trailing `|| true`
+# that would swallow a red suite. COMPLETENESS (no on-disk suite left unwired) is
+# guarded separately and disk-derived by test_every_component_suite_on_disk_is_wired.
+_PYTEST_SUITE_PATHS = {
+    "test-schemas": "schemas/tests",
+    "test-runtime-verify": "runtime-verify/tests",
+    "test-eval-engine": "eval-engine/tests",
+    "test-input-gate": "input-gate/tests",
+    "test-contract-gate": "contract-gate/tests",
+    "test-observatory": "observatory/tests",
+    "test-fix-engine": "fix-engine/tests",
+}
 
 # Top-level `<component>/tests/` dirs that hold a suite but are intentionally NOT
 # run by `make test`. Keep EMPTY unless there is a documented reason: every entry
 # is a hole in durable regression protection and must cite why it is safe.
 _UNWIRED_SUITE_ALLOWLIST: tuple[str, ...] = ()
+
+
+def _suite_command_ok(cmd: str, expected_dir: str) -> bool:
+    """True iff `cmd` is EXACTLY ``python -m pytest <expected_dir>/ -q`` — its own
+    suite, nothing appended. Rejects a suite remap (wrong dir) and a failure mask
+    (a trailing ``|| true`` / ``; true`` leaves extra tokens the fullmatch forbids)."""
+    return re.fullmatch(rf"python -m pytest {re.escape(expected_dir)}/? -q", cmd or "") is not None
+
+
+def _pytest_command_lines(target: str, makefile_text: str) -> list[str]:
+    """The stripped, Make-var-expanded lines of ``target``'s recipe that invoke
+    pytest (there must be exactly one for a well-formed suite target)."""
+    recipe = _expand_make_vars(_recipe(target, makefile_text), makefile_text)
+    return [ln.strip() for ln in recipe.split("\n") if "pytest" in ln]
 
 
 def _makefile_text() -> str:
@@ -114,37 +128,51 @@ def _test_prereqs(text):
     return m.group(1).split("##")[0].split()
 
 
-def test_make_test_covers_component_suites():
-    """The blocking `make test` must ACTUALLY RUN every merged Tier-C component
-    suite, not just list it. Each component dogfoods E1.7, and its PR-time green
-    gives no durable regression protection unless CI re-runs it.
+def test_pytest_suite_targets_run_their_own_suite_unmasked():
+    """The blocking `make test` must ACTUALLY RUN each merged component suite,
+    against its OWN tests dir, with failures un-masked — not merely mention
+    `python -m pytest` somewhere in the recipe.
 
-    Each target must invoke ``python -m pytest <dir>/tests`` — NOT the per-file
-    ``python <file>`` loop the older targets use. That loop no-ops on a test file
-    with no ``__main__`` self-runner (two observatory files are pytest-fixture-
-    only), running ZERO tests while exiting 0 — a vacuous green that ships a
-    broken component. pytest collects+runs every test regardless of ``__main__``
-    and exits 5 on zero collection, so a renamed/empty dir also fails closed.
-    Asserting the pytest idiom is what makes this contract about execution, not
-    just the presence of a loop shape."""
+    The old 'contains python -m pytest' + '/tests/' check let two silent-green
+    vectors through: (a) a remap — pointing test-runtime-verify at schemas/tests,
+    so one suite runs twice and runtime-verify never runs — and (b) a trailing
+    `|| true` that swallows a red suite. Pinning each target to `python -m pytest
+    <its own dir>/ -q` as the SOLE command closes both. `python -m pytest` is
+    still load-bearing over the `python <file>` loop: it collects+runs every test
+    regardless of a `__main__` runner (two observatory files are fixture-only)
+    and exits 5 on zero collection, so an empty/renamed dir also fails closed."""
     text = _makefile_text()
     prereqs = _test_prereqs(text)
     assert prereqs, "could not parse the 'test' target prerequisites"
-    for target in _COMPONENT_TEST_TARGETS:
+    for target, expected in _PYTEST_SUITE_PATHS.items():
         assert target in prereqs, (
             f"'test' prerequisites {prereqs} omit {target} — that component "
             "suite never runs in CI's blocking step"
         )
-        recipe = _recipe(target, text)
-        assert recipe, f"Makefile has no '{target}' target"
-        assert "python -m pytest" in recipe, (
-            f"{target} recipe does not invoke `python -m pytest` — a `python "
-            "<file>` loop runs ZERO tests on a file lacking a __main__ runner "
-            "(observatory's regression) yet exits 0"
+        cmds = _pytest_command_lines(target, text)
+        assert len(cmds) == 1, (
+            f"{target} must run exactly one pytest command, got {cmds} — a second "
+            "pytest line (or none) breaks the one-suite-per-target contract"
         )
-        assert "/tests/" in recipe, (
-            f"{target} recipe does not point pytest at a tests dir"
+        assert _suite_command_ok(cmds[0], expected), (
+            f"{target} runs {cmds[0]!r}, not the exact unmasked "
+            f"`python -m pytest {expected}/ -q` — a remap to another suite's dir "
+            "or a trailing `|| true` (failure mask) would otherwise pass silently"
         )
+
+
+def test_pytest_suite_contract_rejects_remap_and_masking():
+    """Anti-case (teeth for the above): the exact-command predicate must REJECT a
+    remapped suite and a masked failure. A gate that accepts them is vacuous."""
+    expected = "runtime-verify/tests"
+    # Positive control: the honest command is accepted (both slash forms).
+    assert _suite_command_ok("python -m pytest runtime-verify/tests/ -q", expected)
+    assert _suite_command_ok("python -m pytest runtime-verify/tests -q", expected)
+    # (a) remap — runs a DIFFERENT suite's dir:
+    assert not _suite_command_ok("python -m pytest schemas/tests/ -q", expected)
+    # (b) failure mask — a trailing `|| true` / `; true`:
+    assert not _suite_command_ok("python -m pytest runtime-verify/tests/ -q || true", expected)
+    assert not _suite_command_ok("python -m pytest runtime-verify/tests/ -q ; true", expected)
 
 
 def _expand_make_vars(text: str, makefile_text: str) -> str:
@@ -175,7 +203,8 @@ def test_every_component_suite_on_disk_is_wired():
     target list only protects suites someone remembered to type; deriving the
     expected set from disk makes a newly-added-but-unwired component fail closed
     HERE instead of merging silently — the exact bug class of the ``fix-engine``
-    gap (ADR 0001) that _COMPONENT_TEST_TARGETS could never have caught."""
+    gap (ADR 0001) that a hardcoded suite list (like _PYTEST_SUITE_PATHS) could
+    never have caught on its own."""
     text = _makefile_text()
     prereqs = _test_prereqs(text)
     assert prereqs, "could not parse the 'test' target prerequisites"

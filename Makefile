@@ -12,7 +12,8 @@ INIT_DIR := sdlc-init
 FE_DIR   := fix-engine
 # Component packages (Tier C spine): each dogfoods E1.7 and must run in the
 # blocking CI suite, not just at its own PR time — the reviewer's regression-
-# protection finding. Their tests are standalone-runnable via `python <file>`.
+# protection finding. Their targets run `python -m pytest <dir>` (fail-closed on
+# zero collection), NOT the per-file `python <file>` loop the older targets use.
 SCHEMAS_DIR := schemas
 RV_DIR      := runtime-verify
 EE_DIR      := eval-engine

@@ -124,30 +124,105 @@ def test_engine_paths_not_vendor_paths():
     assert "python harness/selfci/gen_quality_workflow.py --check" in rendered
 
 
-def test_mechanical_installs_deps_before_suites():
-    """The mechanical job must `pip install .[dev]` BEFORE `make test`: the
-    component suites are pytest files run via `python <file>`, so on a bare
-    runner without pytest the blocking suite step would error. Ordering is
-    load-bearing — a suite step before install would fail closed on import."""
+# ── Semantic predicates over the RENDERED workflow ────────────────────
+# Assert the GUARANTEE (a real install command; a smoke loop that aggregates and
+# exits nonzero), not merely that a label mentions it — so replacing the command
+# with `true`, or `exit $rc` with `exit 0`, fails closed instead of passing.
+
+# A real `pip install .[dev]` RUN line (indented, standalone). NOT the step's
+# `name:` label, which also carries the text `(pip install .[dev])` but ends in a
+# `)`, so the end-anchored match excludes it.
+_INSTALL_RUN_RE = re.compile(r"(?m)^[ \t]+pip install \.\[dev\]\s*$")
+
+
+def _smoke_step(workflow: str) -> str:
+    """The 'Console entry points resolve (smoke)' step, sliced from its `- name:`
+    header to the next 6-space-indented step boundary ('' if absent)."""
+    marker = "- name: Console entry points resolve (smoke)"
+    i = workflow.find(marker)
+    if i == -1:
+        return ""
+    rest = workflow[i + len(marker):]
+    nxt = re.search(r"\n      - ", rest)
+    return rest[: nxt.start()] if nxt else rest
+
+
+def _install_is_real(workflow: str) -> bool:
+    """True iff the workflow runs `pip install .[dev]` as an actual command line,
+    not only inside a step label."""
+    return _INSTALL_RUN_RE.search(workflow) is not None
+
+
+def _smoke_propagates_failure(workflow: str) -> bool:
+    """True iff the smoke step invokes ``"$cmd" -h``, aggregates per-cmd failures
+    (``rc=1``) and exits nonzero on any (``exit $rc``) — so a red entry point
+    fails the job rather than being masked by ``exit 0``."""
+    step = _smoke_step(workflow)
+    return bool(step) and '"$cmd" -h' in step and "rc=1" in step and "exit $rc" in step
+
+
+def test_mechanical_installs_deps_before_smoke_and_suites():
+    """The mechanical job must run a REAL `pip install .[dev]` command (the
+    component suites run via `python -m pytest <dir>`, so a bare runner without
+    pytest errors), and it must precede both the entry-point smoke and the
+    blocking `make test`. Matching the actual run line — not the step's
+    `(pip install .[dev])` label — means replacing the command with `true` fails
+    this contract instead of passing on the label alone."""
     rendered = render(_tmpl_text())
-    install = rendered.find("pip install .[dev]")
+    assert _install_is_real(rendered), (
+        "mechanical job has no real `pip install .[dev]` run command "
+        "(a step label mentioning it is not enough)"
+    )
+    install = _INSTALL_RUN_RE.search(rendered).start()
+    smoke = rendered.find("Console entry points resolve (smoke)")
     make_test = rendered.find("run: make test")
-    assert install != -1, "mechanical job never runs `pip install .[dev]`"
+    assert smoke != -1, "mechanical job never runs the entry-point smoke"
     assert make_test != -1, "mechanical job never runs `make test`"
-    assert install < make_test, (
-        "`pip install .[dev]` must precede `make test` (deps installed first)"
+    assert install < smoke < make_test, (
+        "order must be install → smoke → `make test`; got positions "
+        f"install={install}, smoke={smoke}, make_test={make_test}"
+    )
+
+
+def test_install_contract_rejects_masked_install():
+    """Anti-case (teeth): replacing the real install command with `true` — while
+    keeping the step label — must FAIL the real-install predicate (Major #2)."""
+    rendered = render(_tmpl_text())
+    assert _install_is_real(rendered)  # positive control
+    masked = _INSTALL_RUN_RE.sub("          true", rendered, count=1)
+    assert "pip install .[dev])" in masked, "label should survive (that is the trap)"
+    assert not _install_is_real(masked), (
+        "predicate accepted a workflow whose install command is `true` — it is "
+        "matching the step label, not the command"
     )
 
 
 def test_mechanical_smokes_gate_entrypoints():
     """The mechanical job must exercise the installed gate console entry points
-    (sdlc-schemas/rv/ee/g1/g2 resolve) after install — a packaging break that
-    leaves an entry point unresolvable is invisible to source-run unit tests."""
+    (sdlc-schemas/rv/ee/g1/g2/kp-observatory resolve) after install — a packaging
+    break that leaves an entry point unresolvable is invisible to source-run unit
+    tests — AND the loop must propagate failure (aggregate + nonzero exit)."""
     rendered = render(_tmpl_text())
     assert "Console entry points resolve (smoke)" in rendered
     assert "for cmd in sdlc-schemas rv ee g1 g2 kp-observatory" in rendered, (
         "entry-point smoke does not exercise all component console scripts "
         "(incl. kp-observatory, whose suite is fixture-only)"
+    )
+    assert _smoke_propagates_failure(rendered), (
+        'smoke step does not aggregate + exit nonzero ("$cmd" -h, rc=1, '
+        "exit $rc) — an unresolvable entry point would be masked"
+    )
+
+
+def test_smoke_contract_rejects_masked_failure():
+    """Anti-case (teeth): replacing `exit $rc` with `exit 0` (masking a failed
+    entry point) must FAIL the failure-propagation predicate (Major #3)."""
+    rendered = render(_tmpl_text())
+    assert _smoke_propagates_failure(rendered)  # positive control
+    masked = rendered.replace("exit $rc", "exit 0")
+    assert not _smoke_propagates_failure(masked), (
+        "predicate accepted a smoke loop that exits 0 regardless of per-cmd "
+        "failures — it is checking the header, not propagation"
     )
 
 
