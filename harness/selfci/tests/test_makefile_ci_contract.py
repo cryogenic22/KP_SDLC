@@ -22,8 +22,12 @@ _MAKEFILE = _ROOT / "Makefile"
 
 _SARIF_PATH_RE = re.compile(r"--sarif[ \t]+(\S+)")
 
-# Every merged Tier-C component whose suite must run in the blocking `make test`
-# (each dogfoods E1.7; PR-time green alone is not durable regression protection).
+# The pytest-idiom component targets whose recipe must invoke `python -m pytest`
+# (fail-closed on zero collection). This tuple guards the IDIOM; COMPLETENESS —
+# that every on-disk suite is wired into `make test` at all — is enforced
+# separately and disk-derived by test_every_component_suite_on_disk_is_wired, so
+# a newly-added-but-unwired component fails closed there instead of merging
+# silently (a hardcoded list can never catch that — the fix-engine gap, ADR 0001).
 _COMPONENT_TEST_TARGETS = (
     "test-schemas",
     "test-runtime-verify",
@@ -31,7 +35,13 @@ _COMPONENT_TEST_TARGETS = (
     "test-input-gate",
     "test-contract-gate",
     "test-observatory",
+    "test-fix-engine",
 )
+
+# Top-level `<component>/tests/` dirs that hold a suite but are intentionally NOT
+# run by `make test`. Keep EMPTY unless there is a documented reason: every entry
+# is a hole in durable regression protection and must cite why it is safe.
+_UNWIRED_SUITE_ALLOWLIST: tuple[str, ...] = ()
 
 
 def _makefile_text() -> str:
@@ -134,6 +144,51 @@ def test_make_test_covers_component_suites():
         )
         assert "/tests/" in recipe, (
             f"{target} recipe does not point pytest at a tests dir"
+        )
+
+
+def _expand_make_vars(text: str, makefile_text: str) -> str:
+    """Expand ``$(NAME_DIR)`` references using the Makefile's ``NAME_DIR := value``
+    definitions, so a recipe like ``python -m pytest $(FE_DIR)/tests/`` resolves to
+    a real on-disk path we can substring-match against."""
+    defs = dict(re.findall(r"^(\w+_DIR)\s*:=\s*(\S+)", makefile_text, flags=re.MULTILINE))
+    return re.sub(r"\$\((\w+_DIR)\)", lambda m: defs.get(m.group(1), m.group(0)), text)
+
+
+def _ondisk_component_test_dirs() -> list[str]:
+    """Every top-level ``<component>/tests/`` dir on disk holding ``test_*.py``, as
+    repo-relative posix paths, minus the documented allowlist. (Harness suites live
+    at ``harness/*/tests`` and are covered by test_make_test_covers_harness_tests.)"""
+    dirs = []
+    for tests_dir in sorted(_ROOT.glob("*/tests")):
+        if not tests_dir.is_dir() or not any(tests_dir.glob("test_*.py")):
+            continue
+        rel = tests_dir.relative_to(_ROOT).as_posix()
+        if rel not in _UNWIRED_SUITE_ALLOWLIST:
+            dirs.append(rel)
+    return dirs
+
+
+def test_every_component_suite_on_disk_is_wired():
+    """COMPLETENESS / anti-drift: every top-level ``<component>/tests/`` dir that
+    holds ``test_*.py`` must be executed by the blocking ``make test``. A hardcoded
+    target list only protects suites someone remembered to type; deriving the
+    expected set from disk makes a newly-added-but-unwired component fail closed
+    HERE instead of merging silently — the exact bug class of the ``fix-engine``
+    gap (ADR 0001) that _COMPONENT_TEST_TARGETS could never have caught."""
+    text = _makefile_text()
+    prereqs = _test_prereqs(text)
+    assert prereqs, "could not parse the 'test' target prerequisites"
+    wired = _expand_make_vars(" ".join(_recipe(t, text) for t in prereqs), text)
+    ondisk = _ondisk_component_test_dirs()
+    assert ondisk, "found no on-disk component test dirs — has the repo layout changed?"
+    for tests_dir in ondisk:
+        assert tests_dir in wired, (
+            f"{tests_dir}/ holds test_*.py but no `make test` target runs it — wire "
+            f"it in (a `python -m pytest {tests_dir}/` target in the `test:` prereqs). "
+            "Hardcoded suite lists can't catch this: see ADR 0001's fix-engine gap. "
+            f"If the omission is deliberate, add '{tests_dir}' to "
+            "_UNWIRED_SUITE_ALLOWLIST with a documented reason."
         )
 
 

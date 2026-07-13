@@ -6,6 +6,10 @@ QG_DIR   := quality-gate
 CK_DIR   := cathedral-keeper
 RPT_DIR  := reporting
 INIT_DIR := sdlc-init
+# fix-engine is a direct-run component (not yet in the distribution, ADR 0001).
+# Its pytest suite must run in blocking CI too — closing the `fix-engine/tests`
+# gap ADR 0001 explicitly earmarked for this self-CI work (E0.2).
+FE_DIR   := fix-engine
 # Component packages (Tier C spine): each dogfoods E1.7 and must run in the
 # blocking CI suite, not just at its own PR time — the reviewer's regression-
 # protection finding. Their tests are standalone-runnable via `python <file>`.
@@ -21,11 +25,11 @@ ROOT     := $(shell pwd)
 
 .PHONY: test test-qg test-ck test-reporting test-init test-harness \
         test-schemas test-runtime-verify test-eval-engine test-input-gate \
-        test-contract-gate test-observatory check report sarif clean help
+        test-contract-gate test-observatory test-fix-engine check report sarif clean help
 
 test: test-qg test-ck test-reporting test-init test-harness test-schemas \
       test-runtime-verify test-eval-engine test-input-gate test-contract-gate \
-      test-observatory ## Run all test suites
+      test-observatory test-fix-engine ## Run all test suites
 	@echo ""
 	@echo "All test suites completed."
 
@@ -129,6 +133,10 @@ test-contract-gate: ## Run contract-gate (G2) tests
 test-observatory: ## Run Observatory tests
 	@echo "=== Observatory Tests ==="
 	python -m pytest $(OBS_DIR)/tests/ -q
+
+test-fix-engine: ## Run fix-engine tests
+	@echo "=== fix-engine Tests ==="
+	python -m pytest $(FE_DIR)/tests/ -q
 
 # ── Analysis targets ─────────────────────────────────────────────────
 
