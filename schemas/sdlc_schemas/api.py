@@ -25,6 +25,7 @@ _SINGLETON_INSTANCE = {
     "sdlc/metric-library@1": "metric-library.yaml",
     "sdlc/standards@1": "standards.yaml",
     "sdlc/architecture-contract@1": "architecture.yaml",
+    "sdlc/nfr-budget@1": "nfr-budget.yaml",
 }
 
 
