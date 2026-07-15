@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "ctx-dogfood-baseline/manifest@1",
+  "title": "CTX dogfood baseline manifest",
+  "description": "A commit-pinned, SANITIZED freeze of Git + ledger + CTX-runtime state across the dogfood repos, so a later CTX-value measurement is reproducible. Stores hashes and sanitized aggregates only — NEVER raw transcript content, absolute paths, session UUIDs, usernames, env values, or raw commands. Validated by a zero-dependency subset validator (type/required/properties/items/enum/const); no $ref so the validator stays small.",
+  "type": "object",
+  "required": ["schema", "captured_at_utc", "generator", "ctx_runtime", "repos"],
+  "properties": {
+    "schema": {"const": "ctx-dogfood-baseline/manifest@1"},
+    "captured_at_utc": {"type": "string"},
+    "generator": {
+      "type": "object",
+      "required": ["tool", "version"],
+      "properties": {
+        "tool": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "ctx_runtime": {
+      "type": "object",
+      "description": "Provenance of the ctxpack runtime that COMPUTED the aggregates (the capturing process). Per-repo hook/MCP config may resolve a DIFFERENT ctxpack via PYTHONPATH — that divergence is captured per repo under config, not here.",
+      "required": ["python_version", "python_executable_sha256", "ctxpack"],
+      "properties": {
+        "python_version": {"type": "string"},
+        "python_executable_sha256": {"type": "string"},
+        "ctxpack": {
+          "type": "object",
+          "required": ["module_path_sha256", "source_sha256", "version"],
+          "properties": {
+            "module_path_sha256": {"type": "string"},
+            "source_sha256": {"type": "string"},
+            "version": {"type": "string"},
+            "impl_commit": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "git", "ledger", "config", "stats_checkpoint_surface"],
+        "properties": {
+          "label": {"type": "string"},
+          "git": {
+            "type": "object",
+            "description": "Split dirty state: a single dirty flag conflates code, ledger, and config. All repos being dirty because their LEDGER churns says nothing about whether the CODE under evaluation is reproducible.",
+            "required": ["branch_sha256", "commit", "code_worktree_dirty", "ledger_dirty", "config_dirty", "non_ledger_diff_sha256"],
+            "properties": {
+              "branch_sha256": {"type": "string"},
+              "commit": {"type": "string"},
+              "code_worktree_dirty": {"type": "boolean"},
+              "ledger_dirty": {"type": "boolean"},
+              "config_dirty": {"type": "boolean"},
+              "non_ledger_diff_sha256": {"type": "string"}
+            }
+          },
+          "ledger": {
+            "type": "object",
+            "description": "Snapshot-consistency: aggregates are computed from the SAME bytes that were hashed (a frozen copy), and the live files are re-verified afterward. torn=true means the ledger changed mid-capture and the entry is not trustworthy.",
+            "required": ["torn", "capture_attempts", "checkpoints_jsonl", "session_artifacts"],
+            "properties": {
+              "torn": {"type": "boolean"},
+              "capture_attempts": {"type": "integer"},
+              "events_jsonl": {"type": ["object", "null"]},
+              "checkpoints_jsonl": {"type": ["object", "null"]},
+              "session_artifacts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "sha256"],
+                  "properties": {
+                    "id": {"type": "string"},
+                    "sha256": {"type": "string"},
+                    "bytes": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "config": {
+            "type": "object",
+            "required": ["settings_sha256", "mcp_sha256", "hook_commands_sha256", "mcp_servers"],
+            "properties": {
+              "settings_sha256": {"type": ["string", "null"]},
+              "mcp_sha256": {"type": ["string", "null"]},
+              "hook_commands_sha256": {"type": "array", "items": {"type": "string"}},
+              "mcp_servers": {"type": "array", "items": {"type": "string"}},
+              "mcp_launch_sha256": {"type": "object"},
+              "mcp_sets_pythonpath": {"type": "object"}
+            }
+          },
+          "stats_checkpoint_surface": {
+            "type": "object",
+            "description": "Canonical sanitized aggregates from `ctxpack session stats` — last checkpoint per session (earlier checkpoints are superseded full repacks). This is a DIFFERENT surface from the raw events.jsonl fact-type totals; conflating the two was the original baseline error."
+          }
+        }
+      }
+    }
+  }
+}
