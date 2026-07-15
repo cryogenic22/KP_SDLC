@@ -8,8 +8,8 @@ Three guarantees:
   quality_gate.py opens --sarif without makedirs — so without the mkdir a
   fresh checkout crashes with FileNotFoundError after the whole scan);
 - `make test` (the blocking CI step) covers the harness suites too, via a
-  `test-harness` prerequisite that loops the structural-floor, process and
-  selfci test files exactly like the other suite targets.
+  `test-harness` prerequisite that runs the structural-floor, process and
+  selfci dirs under `python -m pytest`, failing closed like every suite target.
 """
 
 from __future__ import annotations
@@ -22,13 +22,19 @@ _MAKEFILE = _ROOT / "Makefile"
 
 _SARIF_PATH_RE = re.compile(r"--sarif[ \t]+(\S+)")
 
-# Each pytest-idiom suite target mapped to the ONE tests dir it must run. Pinning
-# the exact path (not just "contains python -m pytest") rejects a remap — pointing
-# test-runtime-verify at schemas/tests so one suite runs twice and another never
-# runs — and, with the unmasked-command predicate below, a trailing `|| true`
-# that would swallow a red suite. COMPLETENESS (no on-disk suite left unwired) is
-# guarded separately and disk-derived by test_every_component_suite_on_disk_is_wired.
+# Each single-dir pytest suite target mapped to the ONE tests dir it must run.
+# Pinning the exact path (not just "contains python -m pytest") rejects a remap —
+# pointing test-runtime-verify at schemas/tests so one suite runs twice and another
+# never runs — and, with the unmasked-command predicate below, a trailing `|| true`
+# that would swallow a red suite. (test-harness runs THREE dirs in one invocation,
+# so it is checked by test_make_test_covers_harness_tests, not here.) COMPLETENESS
+# (no on-disk suite left unwired) is guarded separately and disk-derived by
+# test_every_component_suite_on_disk_is_wired.
 _PYTEST_SUITE_PATHS = {
+    "test-qg": "quality-gate/tests",
+    "test-ck": "cathedral-keeper/tests",
+    "test-reporting": "reporting/tests",
+    "test-init": "sdlc-init/tests",
     "test-schemas": "schemas/tests",
     "test-runtime-verify": "runtime-verify/tests",
     "test-eval-engine": "eval-engine/tests",
@@ -222,33 +228,40 @@ def test_every_component_suite_on_disk_is_wired():
 
 
 def test_make_test_covers_harness_tests():
-    """The blocking `make test` must run the harness suites: a test-harness
-    prerequisite whose recipe loops structural-floor, process and selfci
-    test files and propagates failure like the other suite targets."""
+    """The blocking `make test` must run the three harness suites (structural-floor,
+    process, selfci) via a `test-harness` prerequisite. Unlike the single-dir suite
+    targets it runs all three dirs in ONE `python -m pytest` invocation, so it is
+    checked here rather than through _PYTEST_SUITE_PATHS: test-harness is a prereq,
+    its recipe has exactly one pytest command, that command names all three dirs,
+    and it carries no trailing failure mask (pytest propagates a red suite via its
+    own non-zero exit — the old loop's `[ "$failed" -eq 0 ]` guard is obsolete)."""
     text = _makefile_text()
-    m = re.search(r"^test:([^\n]*)", text, flags=re.MULTILINE)
-    assert m, "Makefile has no 'test' target"
-    prereqs = m.group(1).split("##")[0].split()
+    prereqs = _test_prereqs(text)
     assert "test-harness" in prereqs, (
         f"'test' prerequisites {prereqs} do not include test-harness — "
         "harness suites never run in CI's blocking step"
     )
 
-    recipe = _recipe("test-harness", text)
-    assert recipe, "Makefile has no 'test-harness' target"
+    cmds = _pytest_command_lines("test-harness", text)
+    assert len(cmds) == 1, (
+        f"test-harness must run exactly one pytest command, got {cmds} — the three "
+        "harness dirs run in a single invocation"
+    )
+    cmd = cmds[0]
     for tests_dir in (
         "harness/structural-floor/tests",
         "harness/process/tests",
         "harness/selfci/tests",
     ):
-        assert f"{tests_dir}/test_*.py" in recipe, (
-            f"test-harness recipe does not loop {tests_dir}/test_*.py"
+        assert tests_dir in cmd, (
+            f"test-harness pytest command {cmd!r} does not run {tests_dir}"
         )
-    # Anti-case: without this guard the loop swallows failures (green make
-    # over red tests) — same propagation idiom as the other suite targets.
-    assert '[ "$$failed" -eq 0 ]' in recipe, (
-        "test-harness recipe does not propagate failures "
-        '(missing the [ "$$failed" -eq 0 ] guard)'
+    # Anti-case: a trailing `|| true` / `; true` would turn a red harness suite
+    # green — the failure-mask vector the exact-command predicate rejects for the
+    # single-dir targets, checked directly here for the multi-dir command.
+    assert not re.search(r"\|\|\s*true|;\s*true", cmd), (
+        f"test-harness pytest command {cmd!r} masks failures with a trailing "
+        "`|| true` / `; true` — a red harness suite would pass silently"
     )
 
 
