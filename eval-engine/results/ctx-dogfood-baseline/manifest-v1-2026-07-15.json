@@ -1,0 +1,591 @@
+{
+  "captured_at_utc": "2026-07-15T03:34:33.997666+00:00",
+  "ctx_runtime": {
+    "ctxpack": {
+      "impl_commit": "fe2685e3060552db0b09860c54ff05b39119c13a",
+      "module_path_sha256": "d942d5225f2cfba643bfc28e5f82ed131b2ebbf14d8197602830765e208b3b70",
+      "source_sha256": "60943b20140a987d686807d712797fb643f2f0ec9e4b0a6d4c711d409ef4f6ef",
+      "version": "0.5.0"
+    },
+    "python_executable_sha256": "ef957c25c474806d9ba15cb25a4e827a602597b8023da030bdb47574133c54a9",
+    "python_version": "3.13.3"
+  },
+  "generator": {
+    "tool": "eval_engine.ctx_baseline",
+    "version": "1"
+  },
+  "repos": [
+    {
+      "config": {
+        "hook_commands_sha256": [
+          "0afdf00ddbaa58386dc587ac6e1ba4edc68cfcfd6751fe159265a4f685aebb55",
+          "0fdd83ffcdf83d64b69469b7723a6d4571c57e1081b1f166d5da81f9eadb3e35",
+          "121e7d8937b65e924e6a97e7b018b905b21cb9d94ca6a9e0aca99da82d0f52a0",
+          "641e915d8ce6993091123e97cc3ce2733f8a4444d0219ce548845d721e5405ca",
+          "74ba27209be5313dbe3f53404d4a838b7b5b59b60a2bfdfcd990b14cef77e05b",
+          "80bd7711b923382c6ee237c0dc50c9ba5825b26efd2d417fcb09c45fe0f14be0"
+        ],
+        "mcp_launch_sha256": {
+          "ctxpack": "3b1fe70e6e3e6a76835e0de0c5ab94bc8b256e78bf2fed812e2509b738194351"
+        },
+        "mcp_servers": [
+          "ctxpack"
+        ],
+        "mcp_sets_pythonpath": {
+          "ctxpack": false
+        },
+        "mcp_sha256": "2bef4403aef32658a53153f68c9b30ec8ee76a3c6ef74890da1373aa21e968ed",
+        "settings_sha256": "8ec93390e224f95c1b64b011d12850638fcb1818f96733edbda4a4ef6b8eca3f"
+      },
+      "git": {
+        "branch_sha256": "168cacfa19334acd8198d59565c8c47676a55f6f42462f8c75b8c486399ac9b7",
+        "code_worktree_dirty": true,
+        "commit": "6f1bfe2a50ddd8fde377f8808608a3b5f577097b",
+        "config_dirty": false,
+        "ledger_dirty": true,
+        "non_ledger_diff_sha256": "e76bbccbc517a6635da4b7edf6e725069852cebfd9e07113158b626984af1875"
+      },
+      "label": "repo-a",
+      "ledger": {
+        "capture_attempts": 1,
+        "checkpoints_jsonl": {
+          "bytes": 3011,
+          "sha256": "38270796cf77a1173c90ec3dce1acabb4b7e5579db49d08fee692d80def137c1"
+        },
+        "events_jsonl": {
+          "bytes": 71173,
+          "sha256": "ec71046363551ae5e6745e18ad752ee73850feab237c7522841f34cf2ae0fa38"
+        },
+        "session_artifacts": [
+          {
+            "bytes": 7403,
+            "id": "artifact-1",
+            "sha256": "019ff39ef870bb56fe1cb1390957b675fcc5cafc43e19b992687a4710f377325"
+          },
+          {
+            "bytes": 38357,
+            "id": "artifact-10",
+            "sha256": "b4f0d65cdce1a9a2c04038d0c78f00903bddccf3e560f7db45649b84d5ac13d4"
+          },
+          {
+            "bytes": 7403,
+            "id": "artifact-11",
+            "sha256": "019ff39ef870bb56fe1cb1390957b675fcc5cafc43e19b992687a4710f377325"
+          },
+          {
+            "bytes": 47647,
+            "id": "artifact-12",
+            "sha256": "5fb79ac08645f1048a04d71423fbe9f8a485ac37e89570043395c2acd5a0c9b2"
+          },
+          {
+            "bytes": 1964,
+            "id": "artifact-13",
+            "sha256": "67da429df366be0d3b3da31a1024ce96d0d1607b3d6817fef6973710aca08d30"
+          },
+          {
+            "bytes": 10653,
+            "id": "artifact-14",
+            "sha256": "b20e0a009e11cf77c301f44d3c4da373e9a4ff616026467c5ac4e8418b276c8a"
+          },
+          {
+            "bytes": 5736,
+            "id": "artifact-2",
+            "sha256": "a2427953560444f6f7b4ac3ed3ab25baea0ba785b09f9a687f1e13eb70e0a5de"
+          },
+          {
+            "bytes": 4881,
+            "id": "artifact-3",
+            "sha256": "7163d2781046cda3927c18a46d0e0d53848812d934bf6a727097115beb8d8f12"
+          },
+          {
+            "bytes": 27915,
+            "id": "artifact-4",
+            "sha256": "294803514e06998190b7fc8a91a8abfc38494f4e823bda4904aeb6c364cdd3ca"
+          },
+          {
+            "bytes": 4696,
+            "id": "artifact-5",
+            "sha256": "eb4ca6f6f6db0fac1748dd87254cecab5fea6eb4bfcee6e4c3610d57b39e7cde"
+          },
+          {
+            "bytes": 21169,
+            "id": "artifact-6",
+            "sha256": "3df7a68639b651f52202cb3c19b8675632fbeb0ddeeac126c2cf77c857432a46"
+          },
+          {
+            "bytes": 8056,
+            "id": "artifact-7",
+            "sha256": "2c19b967b7565a4cc5ae816bea4d5b2fc3848f1e13bbf6fe688ce37e1de16b42"
+          },
+          {
+            "bytes": 106956,
+            "id": "artifact-8",
+            "sha256": "59cd0ff0ee55d6ec08dc8f2c05385f95f77e9c7b857426e0580222e9281f0459"
+          },
+          {
+            "bytes": 6371,
+            "id": "artifact-9",
+            "sha256": "c224d979e956d3b58810ac0c94874933f5db5f9696b080819aedf66cecf8595e"
+          }
+        ],
+        "torn": false
+      },
+      "stats_checkpoint_surface": {
+        "captured": {
+          "constraints": 0,
+          "decisions": 15,
+          "errors": 7,
+          "failed_approaches": 2,
+          "files_changed": 39,
+          "findings": 0,
+          "incidents": 0,
+          "literals": 48,
+          "requests": 17,
+          "tasks": 0
+        },
+        "checkpoint_latency_ms": {
+          "max": 436.9,
+          "mean": 341.5
+        },
+        "checkpoints": 6,
+        "gist_bpe": {
+          "latest_per_session": [
+            1995
+          ]
+        },
+        "identifier_fidelity": {},
+        "incident_types": {},
+        "ledger_dir": ".claude/ctx",
+        "read_path": {
+          "ledger_reads": 4,
+          "raw_fallback_rate": 0.2,
+          "transcript_greps": 1
+        },
+        "sessions": 1,
+        "turns_packed": 870
+      }
+    },
+    {
+      "config": {
+        "hook_commands_sha256": [
+          "0afdf00ddbaa58386dc587ac6e1ba4edc68cfcfd6751fe159265a4f685aebb55",
+          "0fdd83ffcdf83d64b69469b7723a6d4571c57e1081b1f166d5da81f9eadb3e35",
+          "641e915d8ce6993091123e97cc3ce2733f8a4444d0219ce548845d721e5405ca",
+          "80bd7711b923382c6ee237c0dc50c9ba5825b26efd2d417fcb09c45fe0f14be0"
+        ],
+        "mcp_launch_sha256": {
+          "ctxpack": "3b1fe70e6e3e6a76835e0de0c5ab94bc8b256e78bf2fed812e2509b738194351"
+        },
+        "mcp_servers": [
+          "ctxpack"
+        ],
+        "mcp_sets_pythonpath": {
+          "ctxpack": false
+        },
+        "mcp_sha256": "31c52533f142f1747e56bf148e0b4e1740d4f4f0a8bcd120d64ef1070aecc344",
+        "settings_sha256": "d8467a36695f0a80656f36d40c4a2a9bb2b45f9f859b260d6e1bf14979e3c7fc"
+      },
+      "git": {
+        "branch_sha256": "0d6e4079e36703ebd37c00722f5891d28b0e2811dc114b129215123adcce3605",
+        "code_worktree_dirty": true,
+        "commit": "f4b33dd863d2927c3410128916ef4de0403812c4",
+        "config_dirty": true,
+        "ledger_dirty": true,
+        "non_ledger_diff_sha256": "b66fb8e9463983513cab7fa584402cf2455d2d6e956174014f6050f748f7bb58"
+      },
+      "label": "repo-b",
+      "ledger": {
+        "capture_attempts": 1,
+        "checkpoints_jsonl": {
+          "bytes": 73641,
+          "sha256": "c6b7af6afadf25c830f611495642475c75921a98d2c141627a8d2ac6cbc39549"
+        },
+        "events_jsonl": {
+          "bytes": 147761,
+          "sha256": "f23083df762143235a7e330d59e6d8352b9e365209ae36ae94d9a82444f1343b"
+        },
+        "session_artifacts": [
+          {
+            "bytes": 5058,
+            "id": "artifact-1",
+            "sha256": "31dce00ccd1999e68d035ce4636dcd725600978db8bbb813ebbf9f247e7e5b2a"
+          },
+          {
+            "bytes": 37210,
+            "id": "artifact-10",
+            "sha256": "cdd618d4de32316cba5f711fc3e4210292aebdb3cbcd086f05f1109683d8d2e3"
+          },
+          {
+            "bytes": 6907,
+            "id": "artifact-11",
+            "sha256": "60788a809cc255685fb541f1c892dbe18cc66e9cb0010fe5fcc94d6adc325045"
+          },
+          {
+            "bytes": 94398,
+            "id": "artifact-12",
+            "sha256": "532989f05675c87ce48545b5634f8afc6943bad7bc4e41c51e9fb0490a903c47"
+          },
+          {
+            "bytes": 7288,
+            "id": "artifact-13",
+            "sha256": "1015ff1ce2044c0648f92857885420916fa4f30ab85671a0c4b7997faeec56b5"
+          },
+          {
+            "bytes": 86886,
+            "id": "artifact-14",
+            "sha256": "c43adcb761e3a45381fd59c3b49835ab0794a40fb7788bab75b09c29805976cd"
+          },
+          {
+            "bytes": 6445,
+            "id": "artifact-15",
+            "sha256": "7aa8c66a59b15d515e1fdd6d5149f45f99248851b8d11ab24be6289f9ba47d72"
+          },
+          {
+            "bytes": 123467,
+            "id": "artifact-16",
+            "sha256": "170df32203e4d231bbed29a94001bb6e24afe442683eb283678549cbd273408b"
+          },
+          {
+            "bytes": 5321,
+            "id": "artifact-2",
+            "sha256": "7f33a029e421b8c25a0d63159a7243c4bb340e8551ef63dfafd93f3427de923c"
+          },
+          {
+            "bytes": 2360,
+            "id": "artifact-3",
+            "sha256": "7177b7b3a73d05125af274fc0d6ce9a2c17aa2a105481b8aa7c9cf91bd802aa3"
+          },
+          {
+            "bytes": 3515,
+            "id": "artifact-4",
+            "sha256": "f328db3f8d86a485a929912fcc51c69e6c4747ff47f4ad36be3851d0db5ac3cd"
+          },
+          {
+            "bytes": 6567,
+            "id": "artifact-5",
+            "sha256": "dea0fc1e898e2ade941f6446898589c0fed7d9ff83588830c8060b6b0fe146cf"
+          },
+          {
+            "bytes": 86830,
+            "id": "artifact-6",
+            "sha256": "0e792b4e5036f7e63747661a20debe15bc81e7c4c7921452989db877d2eb70f7"
+          },
+          {
+            "bytes": 6222,
+            "id": "artifact-7",
+            "sha256": "62d6a399a97bd999fc0713d57fdf63d7ce3068522bd67016a633422108a85182"
+          },
+          {
+            "bytes": 44189,
+            "id": "artifact-8",
+            "sha256": "84fc6f788df714646d039dead5887af9db9532834d9e32d5c16fab3233b0cee6"
+          },
+          {
+            "bytes": 5058,
+            "id": "artifact-9",
+            "sha256": "31dce00ccd1999e68d035ce4636dcd725600978db8bbb813ebbf9f247e7e5b2a"
+          }
+        ],
+        "torn": false
+      },
+      "stats_checkpoint_surface": {
+        "captured": {
+          "constraints": 1,
+          "decisions": 134,
+          "errors": 64,
+          "failed_approaches": 14,
+          "files_changed": 168,
+          "findings": 0,
+          "incidents": 0,
+          "literals": 258,
+          "requests": 65,
+          "tasks": 24
+        },
+        "checkpoint_latency_ms": {
+          "max": 2078.9,
+          "mean": 467.7
+        },
+        "checkpoints": 111,
+        "gist_bpe": {
+          "latest_per_session": [
+            911,
+            1701,
+            1956,
+            1963,
+            1975,
+            1993,
+            1997
+          ]
+        },
+        "identifier_fidelity": {
+          "checkpoints_measured": 60,
+          "latest": 1.0,
+          "min": 1.0
+        },
+        "incident_types": {},
+        "ledger_dir": ".claude/ctx",
+        "read_path": {
+          "ledger_reads": 3,
+          "raw_fallback_rate": 0.25,
+          "transcript_greps": 1
+        },
+        "sessions": 7,
+        "turns_packed": 10124
+      }
+    },
+    {
+      "config": {
+        "hook_commands_sha256": [
+          "0afdf00ddbaa58386dc587ac6e1ba4edc68cfcfd6751fe159265a4f685aebb55",
+          "0fdd83ffcdf83d64b69469b7723a6d4571c57e1081b1f166d5da81f9eadb3e35",
+          "641e915d8ce6993091123e97cc3ce2733f8a4444d0219ce548845d721e5405ca",
+          "80bd7711b923382c6ee237c0dc50c9ba5825b26efd2d417fcb09c45fe0f14be0",
+          "92620913636940e6dec31db47c9b0c8977116492a1f4851e8934b4a535631ac7",
+          "f8397c65c3f45de6e3393dcbc55f261d9fc1f030d10e0c69015b3b7a374bbe46"
+        ],
+        "mcp_launch_sha256": {
+          "ctxpack": "3b1fe70e6e3e6a76835e0de0c5ab94bc8b256e78bf2fed812e2509b738194351",
+          "ctxpack-code": "567ec0e24494e3e1e3eab2c05a1daeef8cee448803f9865b457ce526637d4bbc"
+        },
+        "mcp_servers": [
+          "ctxpack",
+          "ctxpack-code"
+        ],
+        "mcp_sets_pythonpath": {
+          "ctxpack": false,
+          "ctxpack-code": true
+        },
+        "mcp_sha256": "e9005138354633e44fc388324b2d1723d56e0b14669c16e9aea8b1b6e51d44f4",
+        "settings_sha256": "9bc6408dc46be1329375294028fe845d9192788bd736dd37dc2eed1167536ad1"
+      },
+      "git": {
+        "branch_sha256": "ee69cc1e7f2ab6ff635effcc4e57507de375d86760587f798b08f586212fbb9b",
+        "code_worktree_dirty": true,
+        "commit": "38889b54354f457de1d7f37a371c61507ffa5ebe",
+        "config_dirty": false,
+        "ledger_dirty": true,
+        "non_ledger_diff_sha256": "f79b4054abf9f6bf2d238c1492c540b629baa614c9cb09f9bb9f9364f85d554c"
+      },
+      "label": "repo-c",
+      "ledger": {
+        "capture_attempts": 1,
+        "checkpoints_jsonl": {
+          "bytes": 25704,
+          "sha256": "903a6d141d34bd97596ccc311eac3408a99f33e61811bf70900999be8fb648c9"
+        },
+        "events_jsonl": {
+          "bytes": 123690,
+          "sha256": "fe58f0055ba39794d57bfd9a79943eca90d303b5be73d1c749417e0ef452b5f8"
+        },
+        "session_artifacts": [
+          {
+            "bytes": 6524,
+            "id": "artifact-1",
+            "sha256": "2bdad30635394eac2b94c10d38bf7d0c8c5e62a3373e31658801f5d007cfe3d1"
+          },
+          {
+            "bytes": 71332,
+            "id": "artifact-10",
+            "sha256": "28a09c4213f1f40012d7ffc7e9d7bb60884986480114a86e7a652a8870376cea"
+          },
+          {
+            "bytes": 5517,
+            "id": "artifact-2",
+            "sha256": "568ba6ce263aa2dc9cb34a2a5bbe5da2cea1aed6370ceb988d3df7df74dc0b48"
+          },
+          {
+            "bytes": 6698,
+            "id": "artifact-3",
+            "sha256": "6c404b47922fedaf917677ecc0e8d7c209d0655ce38c91d5633ec34f6e165aee"
+          },
+          {
+            "bytes": 104800,
+            "id": "artifact-4",
+            "sha256": "70dec10b6af3ed7ce32c90985beb4d7a4ad50fa5ae4af5204c79d5d6dc18c936"
+          },
+          {
+            "bytes": 5885,
+            "id": "artifact-5",
+            "sha256": "6d3ae94f38168a0196892a5e3c6a4c85e34149ca81236c1801610e84e5650f2f"
+          },
+          {
+            "bytes": 43334,
+            "id": "artifact-6",
+            "sha256": "90439451722d1b8c05226e13538a0c91b7fa3b4847f0f744704b868d9105c94b"
+          },
+          {
+            "bytes": 6524,
+            "id": "artifact-7",
+            "sha256": "2bdad30635394eac2b94c10d38bf7d0c8c5e62a3373e31658801f5d007cfe3d1"
+          },
+          {
+            "bytes": 46036,
+            "id": "artifact-8",
+            "sha256": "a344410a7325fa3e08cddc2ea97401595dc0f59d8782a06e9a7e29c5b95e5d1d"
+          },
+          {
+            "bytes": 6951,
+            "id": "artifact-9",
+            "sha256": "31ff98d848ccf225660754f8c7c98a6a7b31a4edca1ad097f73e6384c44867de"
+          }
+        ],
+        "torn": false
+      },
+      "stats_checkpoint_surface": {
+        "captured": {
+          "constraints": 0,
+          "decisions": 74,
+          "errors": 34,
+          "failed_approaches": 6,
+          "files_changed": 110,
+          "findings": 0,
+          "incidents": 0,
+          "literals": 283,
+          "requests": 68,
+          "tasks": 38
+        },
+        "checkpoint_latency_ms": {
+          "max": 867.6,
+          "mean": 412.2
+        },
+        "checkpoints": 39,
+        "gist_bpe": {
+          "latest_per_session": [
+            1939,
+            1954,
+            1984,
+            1999
+          ]
+        },
+        "identifier_fidelity": {
+          "checkpoints_measured": 18,
+          "latest": 1.0,
+          "min": 1.0
+        },
+        "incident_types": {},
+        "ledger_dir": ".claude/ctx",
+        "read_path": {
+          "ledger_reads": 13,
+          "raw_fallback_rate": 0.235,
+          "transcript_greps": 4
+        },
+        "sessions": 4,
+        "turns_packed": 4797
+      }
+    },
+    {
+      "config": {
+        "hook_commands_sha256": [
+          "0afdf00ddbaa58386dc587ac6e1ba4edc68cfcfd6751fe159265a4f685aebb55",
+          "0fdd83ffcdf83d64b69469b7723a6d4571c57e1081b1f166d5da81f9eadb3e35",
+          "641e915d8ce6993091123e97cc3ce2733f8a4444d0219ce548845d721e5405ca",
+          "80bd7711b923382c6ee237c0dc50c9ba5825b26efd2d417fcb09c45fe0f14be0"
+        ],
+        "mcp_launch_sha256": {
+          "ctxpack": "3b1fe70e6e3e6a76835e0de0c5ab94bc8b256e78bf2fed812e2509b738194351"
+        },
+        "mcp_servers": [
+          "ctxpack"
+        ],
+        "mcp_sets_pythonpath": {
+          "ctxpack": false
+        },
+        "mcp_sha256": "31c52533f142f1747e56bf148e0b4e1740d4f4f0a8bcd120d64ef1070aecc344",
+        "settings_sha256": "d8467a36695f0a80656f36d40c4a2a9bb2b45f9f859b260d6e1bf14979e3c7fc"
+      },
+      "git": {
+        "branch_sha256": "3ae3678c3ebc1487906509fa0a1e329cc69f23fcbe08e611c0c8eb9adadda703",
+        "code_worktree_dirty": true,
+        "commit": "8e600e928eaad7e58932344ae8cb22301af76515",
+        "config_dirty": true,
+        "ledger_dirty": true,
+        "non_ledger_diff_sha256": "68be893a97847065c44e6ef73c877e66071b25ea19f42c114ce35d4681384be0"
+      },
+      "label": "repo-d",
+      "ledger": {
+        "capture_attempts": 1,
+        "checkpoints_jsonl": {
+          "bytes": 2334,
+          "sha256": "ac516b54a4f84d2e6b417f3b45e1a72fae79cdc9b3a20a590292659ed7ca17d9"
+        },
+        "events_jsonl": {
+          "bytes": 30697,
+          "sha256": "3d945109f0ebf6a641a596b9075786f90a038f2d3e330da7559da9937f5a44d5"
+        },
+        "session_artifacts": [
+          {
+            "bytes": 3099,
+            "id": "artifact-1",
+            "sha256": "ddf93b02daa21d28cb551547e634d91829c292911df0ceddd573467dd7e99f19"
+          },
+          {
+            "bytes": 5289,
+            "id": "artifact-2",
+            "sha256": "7d3bd10c57a62b31bac70c7f4fb304f85f02cd3cbafd5a4f4628baf1af2cb9c1"
+          },
+          {
+            "bytes": 3099,
+            "id": "artifact-3",
+            "sha256": "ddf93b02daa21d28cb551547e634d91829c292911df0ceddd573467dd7e99f19"
+          },
+          {
+            "bytes": 13695,
+            "id": "artifact-4",
+            "sha256": "82ce5cf2fb47a23887d88df21713991a944a54de8f0440ab34d4ee9cfa17f2ef"
+          },
+          {
+            "bytes": 6664,
+            "id": "artifact-5",
+            "sha256": "b3286025df2ff012dd741ec91f79313634bf92d5a8e22ec635c0b4f758a114e2"
+          },
+          {
+            "bytes": 79858,
+            "id": "artifact-6",
+            "sha256": "e70a4eddc5a8302fc2b2fbcc4f08e5748b46b05a18b88f58bff2ff14cf9ba339"
+          }
+        ],
+        "torn": false
+      },
+      "stats_checkpoint_surface": {
+        "captured": {
+          "constraints": 0,
+          "decisions": 31,
+          "errors": 9,
+          "failed_approaches": 6,
+          "files_changed": 70,
+          "findings": 0,
+          "incidents": 0,
+          "literals": 48,
+          "requests": 10,
+          "tasks": 0
+        },
+        "checkpoint_latency_ms": {
+          "max": 1108.3,
+          "mean": 616.0
+        },
+        "checkpoints": 3,
+        "gist_bpe": {
+          "latest_per_session": [
+            987,
+            2000
+          ]
+        },
+        "identifier_fidelity": {
+          "checkpoints_measured": 3,
+          "latest": 1.0,
+          "min": 1.0
+        },
+        "incident_types": {},
+        "ledger_dir": ".claude/ctx",
+        "read_path": {
+          "ledger_reads": 0,
+          "raw_fallback_rate": null,
+          "transcript_greps": 0
+        },
+        "sessions": 2,
+        "turns_packed": 2272
+      }
+    }
+  ],
+  "schema": "ctx-dogfood-baseline/manifest@1"
+}

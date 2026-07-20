@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from .corpus import CorpusInvalid, load_corpus
+from .ctx_baseline import build_arg_parser as add_baseline_args, run as run_ctx_baseline
 from .result import evaluate_corpus
 
 _DEFAULT_CORE = ".sdlc-core"
@@ -40,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--report", default=None,
                             help="write the scorecard JSON here (default: stdout)")
     run_parser.set_defaults(func=cmd_run)
+
+    baseline_parser = sub.add_parser(
+        "ctx-baseline", help="freeze a sanitized CTX dogfood baseline manifest")
+    add_baseline_args(baseline_parser)
+    baseline_parser.set_defaults(func=cmd_ctx_baseline)
     return parser
 
 
@@ -58,6 +64,10 @@ def cmd_run(args) -> int:
     _emit(scorecard, args.report)
     _report_console(scorecard)
     return 0 if scorecard.ok else 1
+
+
+def cmd_ctx_baseline(args) -> int:
+    return run_ctx_baseline(args.repos_config, args.out, args.attempts)
 
 
 def _emit(scorecard, report_path) -> None:

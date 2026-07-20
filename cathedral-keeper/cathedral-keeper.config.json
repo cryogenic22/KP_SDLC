@@ -44,7 +44,7 @@
           "**/cli.py", "**/__main__.py", "**/conftest.py", "**/test_*.py",
           "**/*_test.py", "**/tests/**", "**/test/**", "**/celery_*.py",
           "**/migrations/**", "**/alembic/**", "**/manage.py", "**/setup.py",
-          "**/tasks.py", "**/__init__.py"
+          "**/tasks.py", "**/__init__.py", "**/ctx_baseline.py"
         ]
       }
     },
