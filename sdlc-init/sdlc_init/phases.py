@@ -10,17 +10,16 @@ with optional onboard_ctxpack composed by the CLI.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterator
 
 from . import harness_map as hm
 from .executor import (InitContext, PhaseResult, assert_no_residual_placeholders,
                        install_file)
 from .manifest import build_repo_manifest, write_repo_manifest
+from .vendor import iter_vendor_files, missing_vendor_sources, sha256_bytes
 
 
 def _dest_for_workflow(ctx: InitContext, filename: str) -> str:
@@ -141,37 +140,6 @@ def park_readme(ctx: InitContext) -> PhaseResult:
     return PhaseResult("park_readme", "ok", changes=[rel])
 
 
-def _missing_vendor_sources(engine_root: Path) -> list[str]:
-    """Engine components the vendor maps expect but the checkout lacks."""
-    missing = [src for src, _ in hm.ENGINE_VENDOR_MAP
-               if not (engine_root / src).is_file()]
-    missing += [src for src, _ in hm.ENGINE_VENDOR_DIRS
-                if not (engine_root / src).is_dir()]
-    return missing
-
-
-def _iter_vendor_dir(src_dir: Path, dest_dir_rel: str) -> Iterator[tuple[Path, str]]:
-    """Yield (source, dest_rel) for one vendored directory: code+config
-    files only, pruned of caches/tests (which also sidesteps stray non-code
-    files like 'nul')."""
-    for f in sorted(src_dir.rglob("*")):
-        if not f.is_file() or f.suffix not in hm.VENDOR_INCLUDE_SUFFIXES:
-            continue
-        rel = f.relative_to(src_dir)
-        if hm.VENDOR_PRUNE_DIRS & set(rel.parts):
-            continue
-        yield f, f"{dest_dir_rel}/{rel.as_posix()}"
-
-
-def _iter_vendor_files(engine_root: Path) -> Iterator[tuple[Path, str]]:
-    """Yield (source, dest_rel) for every file to vendor: the explicit map,
-    then the directory fan-outs (each walked by _iter_vendor_dir)."""
-    for src_rel, dest_rel in hm.ENGINE_VENDOR_MAP:
-        yield engine_root / src_rel, dest_rel
-    for src_dir_rel, dest_dir_rel in hm.ENGINE_VENDOR_DIRS:
-        yield from _iter_vendor_dir(engine_root / src_dir_rel, dest_dir_rel)
-
-
 def vendor_engine(ctx: InitContext) -> PhaseResult:
     """Vendor the pinned QG+CK engines into tools/qa/ — BYTE-copied (never
     install_file: substitution or LF-forcing would corrupt the sha256 pin),
@@ -181,15 +149,15 @@ def vendor_engine(ctx: InitContext) -> PhaseResult:
     if ctx.dry_run:
         return PhaseResult("vendor_engine", "dry",
                            detail=f"would vendor QG+CK into {hm.ENGINE_VENDOR_DEST}/")
-    missing = _missing_vendor_sources(ctx.manifest.engine_root)
+    missing = missing_vendor_sources(ctx.manifest.engine_root)
     if missing:
         return PhaseResult("vendor_engine", "fail",
                            detail="engine components not found — cannot vendor: "
                                   + ", ".join(missing))
     changes: list[str] = []
-    for src, dest_rel in _iter_vendor_files(ctx.manifest.engine_root):
+    for src, dest_rel in iter_vendor_files(ctx.manifest.engine_root):
         data = src.read_bytes()
-        ctx.vendor_hashes[dest_rel] = hashlib.sha256(data).hexdigest()
+        ctx.vendor_hashes[dest_rel] = sha256_bytes(data)
         dest = ctx.target / dest_rel
         if dest.exists():
             continue
