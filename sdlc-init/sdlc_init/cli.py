@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import harness_map as hm
 from . import phases as ph
+from . import status as st
 from .executor import InitContext, run
 from .manifest import InitManifest
 
@@ -123,6 +124,18 @@ def cmd_bootstrap(args) -> int:
     return 0
 
 
+def _resolved(value: str | None) -> Path | None:
+    return Path(value).resolve() if value else None
+
+
+def cmd_status(args) -> int:
+    """Read the manifest back: vendored-tree integrity always, upstream
+    staleness when an engine checkout is offered. Exit 1 on drift, 2 when a
+    requested check could not run."""
+    return st.run(_resolved(args.target), _resolved(args.engine_root),
+                  args.as_json)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sdlc", description="Born-gated repo setup")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -144,6 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_bs.add_argument("--as-of", default=None)
     p_bs.add_argument("--dry-run", action="store_true")
     p_bs.set_defaults(func=cmd_bootstrap)
+
+    p_status = sub.add_parser(
+        "status", help="Report vendored-engine tamper/staleness for a born repo")
+    st.build_arg_parser(p_status)
+    p_status.set_defaults(func=cmd_status)
     return parser
 
 

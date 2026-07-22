@@ -59,14 +59,26 @@ stack exists.
   vendors `tools/qa/`, so it parks `engine-gates.yml` alongside the config
   workflows — an active workflow invoking engines that were never installed
   would be red CI from the first push. Only `sdlc init` activates it.
+- `sdlc status [--target DIR] [--engine-root DIR] [--json]` — reads the
+  manifest back. **integrity** (always): the vendored `tools/qa/` tree on disk
+  vs. the per-file sha256 init recorded — catches an edited, deleted or added
+  engine file, and catches a manifest hand-patched to match (the aggregate no
+  longer digests its own files map). **upstream** (only with `--engine-root`):
+  the recorded snapshot vs. what the engine ships today, naming the changed
+  files — the "you are running last month's gate" signal. Exit 0 in sync, 1 on
+  drift, 2 when a requested check could not run. A check that was *not*
+  requested reports `not_checked` and is excluded from the verdict; a check
+  that was requested and failed to run is `unknown` and never reads as `ok`.
 - `bash harness/bootstrap.sh [DIR]` — thin shim over `sdlc bootstrap`.
 
 ## Not yet (deferred, tracked in the execution plan)
 
 Manifest signing (E11.1), profile-driven workflow activation (E11.4),
 resume-from-failure (vs the current resume-by-idempotent-rerun), the UI
-(E11.10+), and `sdlc status`/`sdlc update` reading the `engine.vendored`
-sha256 record for drift/tamper detection. The born-gated proof runs locally
+(E11.10+), and `sdlc update` — *applying* the drift `sdlc status` now reports.
+Detection landed first on purpose: propagation is copy-by-value and
+skip-if-exists, so until something can say which repos are stale and in what
+way, an updater would have nothing trustworthy to act on. The born-gated proof runs locally
 during init; the branch+PR+CI-catches-it variant needs push credentials init
 does not have and stays a documented manual step. Branch protection must be
 enabled on the remote for CODEOWNERS to be enforced — init prints this as the
