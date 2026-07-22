@@ -18,8 +18,13 @@ import json
 from pathlib import Path
 
 from .adaptive import AdaptiveObservatory
+from .cost import run as run_cost
 from .install_hooks import install
 from .server import serve
+
+
+def _resolved(value: str | None) -> Path | None:
+    return Path(value).resolve() if value else None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,12 +39,25 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard = commands.add_parser("serve", help="run the localhost dashboard")
     dashboard.add_argument("--host", default="127.0.0.1")
     dashboard.add_argument("--port", type=int, default=8765)
+    cost = commands.add_parser("cost", help="attribute token cost per session")
+    cost.add_argument("--json", dest="as_json", action="store_true",
+                      help="emit the machine-readable report")
+    cost.add_argument("--record", dest="do_record", action="store_true",
+                      help="append totals to .observatory/cost-history.jsonl")
+    cost.add_argument("--limit", type=int, default=None,
+                      help="only the N most recently modified sessions")
+    cost.add_argument("--projects-root", default=None,
+                      help="transcript store (default: ~/.claude/projects)")
     return parser
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    root = Path(args.root).resolve()
+    root = _resolved(args.root)
+    if args.command == "cost":
+        return run_cost(root, as_json=args.as_json, do_record=args.do_record,
+                        limit=args.limit,
+                        projects_root=_resolved(args.projects_root))
     observatory = AdaptiveObservatory(root)
     if args.command == "install-hooks":
         path, added = install(root)

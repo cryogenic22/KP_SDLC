@@ -76,11 +76,12 @@ def normalize_claude_hook(payload: dict[str, Any], *, capture_inputs: bool = Fal
     }
 
 
-def append_event(root: Path, event: dict[str, Any]) -> Path:
-    """Append one bounded JSON record. O_APPEND keeps concurrent hook writes intact."""
-    target = root.resolve() / ".observatory" / "events.jsonl"
+def append_jsonl(target: Path, payload: dict[str, Any]) -> Path:
+    """Append one bounded JSON record. O_APPEND keeps concurrent writes intact;
+    0600 keeps the ledger readable only by its owner. Single-sourced so every
+    Observatory ledger inherits the same durability and permission posture."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    record = json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n"
+    record = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
     flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
     descriptor = os.open(target, flags, 0o600)
     try:
@@ -88,6 +89,11 @@ def append_event(root: Path, event: dict[str, Any]) -> Path:
     finally:
         os.close(descriptor)
     return target
+
+
+def append_event(root: Path, event: dict[str, Any]) -> Path:
+    """Append one normalized event to this repo's event ledger."""
+    return append_jsonl(root.resolve() / ".observatory" / "events.jsonl", event)
 
 
 def read_events(root: Path, *, limit: int = 500) -> list[dict[str, Any]]:
