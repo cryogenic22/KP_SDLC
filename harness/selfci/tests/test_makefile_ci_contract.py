@@ -49,12 +49,24 @@ _PYTEST_SUITE_PATHS = {
 # is a hole in durable regression protection and must cite why it is safe.
 _UNWIRED_SUITE_ALLOWLIST: tuple[str, ...] = ()
 
+_HARNESS_TEST_DIRS = (
+    "harness/structural-floor/tests",
+    "harness/process/tests",
+    "harness/selfci/tests",
+)
+
 
 def _suite_command_ok(cmd: str, expected_dir: str) -> bool:
     """True iff `cmd` is EXACTLY ``python -m pytest <expected_dir>/ -q`` — its own
     suite, nothing appended. Rejects a suite remap (wrong dir) and a failure mask
     (a trailing ``|| true`` / ``; true`` leaves extra tokens the fullmatch forbids)."""
     return re.fullmatch(rf"python -m pytest {re.escape(expected_dir)}/? -q", cmd or "") is not None
+
+
+def _harness_command_ok(cmd: str) -> bool:
+    """Require the one exact, unmasked pytest command for all harness suites."""
+    expected = "python -m pytest " + " ".join(_HARNESS_TEST_DIRS) + " -q"
+    return cmd == expected
 
 
 def _pytest_command_lines(target: str, makefile_text: str) -> list[str]:
@@ -248,21 +260,21 @@ def test_make_test_covers_harness_tests():
         "harness dirs run in a single invocation"
     )
     cmd = cmds[0]
-    for tests_dir in (
-        "harness/structural-floor/tests",
-        "harness/process/tests",
-        "harness/selfci/tests",
-    ):
+    for tests_dir in _HARNESS_TEST_DIRS:
         assert tests_dir in cmd, (
             f"test-harness pytest command {cmd!r} does not run {tests_dir}"
         )
-    # Anti-case: a trailing `|| true` / `; true` would turn a red harness suite
-    # green — the failure-mask vector the exact-command predicate rejects for the
-    # single-dir targets, checked directly here for the multi-dir command.
-    assert not re.search(r"\|\|\s*true|;\s*true", cmd), (
-        f"test-harness pytest command {cmd!r} masks failures with a trailing "
-        "`|| true` / `; true` — a red harness suite would pass silently"
+    assert _harness_command_ok(cmd), (
+        f"test-harness runs {cmd!r}, not its exact unmasked pytest command"
     )
+
+
+def test_harness_suite_contract_rejects_failure_masks():
+    """Anti-case: Make prefixes, shell fallbacks, and pipelines must be rejected."""
+    honest = "python -m pytest " + " ".join(_HARNESS_TEST_DIRS) + " -q"
+    assert _harness_command_ok(honest)
+    for masked in (f"-{honest}", f"{honest} || :", f"{honest} | cat", f"{honest}; exit 0"):
+        assert not _harness_command_ok(masked)
 
 
 # ── Runner ────────────────────────────────────────────────────────────
