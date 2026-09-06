@@ -1,4 +1,4 @@
-"""`sdlc status` — the drift/tamper reader for a born-gated repo.
+"""`sdlc status` — the integrity-drift reader for a born-gated repo.
 
 `sdlc init` has always RECORDED what a repo received: engine SHA, engine
 version, and a per-file sha256 of the vendored `tools/qa/` tree, all in
@@ -28,6 +28,7 @@ import logging
 from pathlib import Path
 
 from . import harness_map as hm
+from .manifest import SCHEMA as MANIFEST_SCHEMA
 from .manifest import engine_sha, engine_version, vendored_record
 from .vendor import hash_engine_sources, hash_installed, missing_vendor_sources
 
@@ -64,39 +65,61 @@ def load_manifest(target: Path) -> dict | None:
     both mean 'nothing to verify against', and both must fail closed."""
     path = target / _MANIFEST_REL
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         logger.warning("sdlc status: no readable manifest at %s: %s", path, exc)
         return None
+    if not isinstance(manifest, dict):
+        logger.warning("sdlc status: manifest root at %s is not an object", path)
+        return None
+    return manifest
 
 
 def _unknown(reason: str) -> dict:
     return {"verdict": UNKNOWN, "reason": reason}
 
 
+def _validated_record(record: object) -> tuple[dict | None,
+                                               dict[str, str] | None,
+                                               str | None]:
+    """Validate the untrusted manifest boundary once for both status axes."""
+    if not isinstance(record, dict) or not record:
+        return None, None, "manifest has no engine.vendored record"
+    raw_files = record.get("files")
+    if not isinstance(raw_files, dict) or not all(
+            isinstance(rel, str) and isinstance(digest, str)
+            for rel, digest in raw_files.items()):
+        return None, None, "engine.vendored record has a malformed files map"
+    if not raw_files or not isinstance(record.get("sha256"), str) \
+            or not record["sha256"]:
+        return None, None, "engine.vendored record is incomplete (no files/sha256 map)"
+    return record, dict(raw_files), None
+
+
 def _record_is_self_consistent(record: dict, files: dict[str, str]) -> bool:
     """The aggregate must digest the per-file map it ships with. A mismatch
-    means the record was hand-edited — exactly what happens when someone
-    updates a vendored file and patches the manifest by hand."""
+    means the record is internally inconsistent, such as after a partial
+    manual edit."""
     return vendored_record(files)["sha256"] == record.get("sha256")
 
 
-def check_integrity(target: Path, record: dict | None) -> dict:
+def check_integrity(target: Path, record: object) -> dict:
     """Vendored bytes on disk vs. the bytes init recorded."""
-    if not record:
-        return _unknown(
-            "manifest has no engine.vendored record — a bootstrapped (copy-only) "
-            "repo never vendored tools/qa/, so there is nothing to verify")
-    files = dict(record.get("files") or {})
+    record, files, problem = _validated_record(record)
+    if problem:
+        return _unknown(problem)
+    assert record is not None and files is not None
     checked = len(files)
-    if not checked or not record.get("sha256"):
-        return _unknown("engine.vendored record is incomplete (no files/sha256 map)")
     if not _record_is_self_consistent(record, files):
         return {"verdict": DRIFT, "checked": checked,
                 "reason": "engine.vendored.sha256 does not digest its own files map "
                           "— the manifest was edited by hand",
                 "modified": [], "missing": [], "extra": []}
-    disk = hash_installed(target)
+    try:
+        disk = hash_installed(target)
+    except OSError as exc:
+        logger.warning("sdlc status: unreadable vendored files at %s: %s", target, exc)
+        return _unknown(f"could not read vendored files: {exc}")
     recorded_keys, disk_keys = set(files), set(disk)
     modified = sorted(rel for rel in recorded_keys & disk_keys
                       if disk[rel] != files[rel])
@@ -105,20 +128,6 @@ def check_integrity(target: Path, record: dict | None) -> dict:
     verdict = DRIFT if (modified or missing or extra) else OK
     return {"verdict": verdict, "checked": checked, "modified": modified,
             "missing": missing, "extra": extra}
-
-
-def _upstream_blocked(engine_root: Path | None, record: dict | None) -> dict | None:
-    """Why the staleness axis cannot produce a verdict, or None if it can."""
-    if engine_root is None:
-        return {"verdict": NOT_CHECKED,
-                "reason": "no --engine-root given; staleness was not evaluated"}
-    if not record or not (record.get("files") or {}):
-        return _unknown("no engine.vendored record to compare against")
-    absent = missing_vendor_sources(engine_root)
-    if absent:
-        return _unknown("--engine-root is not a usable engine checkout "
-                        f"(missing: {', '.join(absent[:3])})")
-    return None
 
 
 def _diff_upstream(recorded: dict[str, str], current: dict[str, str],
@@ -135,18 +144,26 @@ def _diff_upstream(recorded: dict[str, str], current: dict[str, str],
             "engine_version": engine_version(engine_root)}
 
 
-def check_upstream(engine_root: Path | None, record: dict | None) -> dict:
+def check_upstream(engine_root: Path | None, record: object) -> dict:
     """The recorded snapshot vs. what the engine ships today."""
-    blocked = _upstream_blocked(engine_root, record)
-    if blocked:
-        return blocked
+    if engine_root is None:
+        return {"verdict": NOT_CHECKED,
+                "reason": "no --engine-root given; staleness was not evaluated"}
+    _record, files, problem = _validated_record(record)
+    if problem:
+        return _unknown(problem)
+    assert files is not None
+    absent = missing_vendor_sources(engine_root)
+    if absent:
+        return _unknown("--engine-root is not a usable engine checkout "
+                        f"(missing: {', '.join(absent[:3])})")
     try:
         current = hash_engine_sources(engine_root)
     except OSError as exc:
         logger.warning("sdlc status: unreadable engine sources at %s: %s",
                        engine_root, exc)
         return _unknown(f"could not read engine sources: {exc}")
-    return _diff_upstream(dict(record["files"]), current, engine_root)
+    return _diff_upstream(files, current, engine_root)
 
 
 def _overall(*verdicts: str) -> str:
@@ -166,7 +183,9 @@ def _no_manifest_report(target: Path) -> dict:
 
 
 def _manifest_summary(manifest: dict) -> dict:
-    engine = manifest.get("engine") or {}
+    engine = manifest.get("engine")
+    if not isinstance(engine, dict):
+        engine = {}
     return {"schema": manifest.get("schema"),
             "init_status": manifest.get("status"),
             "project_name": manifest.get("project_name"),
@@ -175,13 +194,41 @@ def _manifest_summary(manifest: dict) -> dict:
             "engine_version": engine.get("version")}
 
 
+def _manifest_problem(manifest: dict) -> str | None:
+    schema = manifest.get("schema")
+    if schema != MANIFEST_SCHEMA:
+        return f"unsupported manifest schema: {schema!r}"
+    init_status = manifest.get("status")
+    if init_status != "ok":
+        return f"manifest records init status {init_status!r}, not 'ok'"
+    if not isinstance(manifest.get("engine"), dict):
+        return "manifest engine record is malformed"
+    return None
+
+
+def _invalid_manifest_report(target: Path, manifest: dict, reason: str,
+                             engine_root: Path | None) -> dict:
+    blocked = _unknown(reason)
+    integrity = dict(blocked)
+    upstream = ({"verdict": NOT_CHECKED,
+                 "reason": "no --engine-root given; staleness was not evaluated"}
+                if engine_root is None else dict(blocked))
+    return {"schema": SCHEMA, "target": target.as_posix(),
+            "manifest": _manifest_summary(manifest),
+            "integrity": integrity, "upstream": upstream,
+            "verdict": UNKNOWN, "exit_code": EXIT_UNKNOWN}
+
+
 def evaluate(target: Path, engine_root: Path | None = None) -> dict:
     """The full status report. Pure — takes paths, returns a dict, writes
     nothing, so tests and any future caller share one code path."""
     manifest = load_manifest(target)
     if manifest is None:
         return _no_manifest_report(target)
-    record = (manifest.get("engine") or {}).get("vendored")
+    problem = _manifest_problem(manifest)
+    if problem:
+        return _invalid_manifest_report(target, manifest, problem, engine_root)
+    record = manifest["engine"].get("vendored")
     integrity = check_integrity(target, record)
     upstream = check_upstream(engine_root, record)
     verdict = _overall(integrity["verdict"], upstream["verdict"])

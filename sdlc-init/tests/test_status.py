@@ -5,9 +5,8 @@ verified it, so the pin proved nothing. These tests hold the reader to the
 two claims it makes:
 
   integrity — every way the vendored tree can diverge from its record is
-              caught (edited, deleted, added), INCLUDING the manifest being
-              hand-patched to match — the exact move someone makes when
-              hand-updating a vendored file.
+              caught (edited, deleted, added), including an internally
+              inconsistent partial manifest edit.
   upstream  — a repo born from an older engine is reported stale, with the
               changed files named.
 
@@ -86,7 +85,7 @@ def _manifest(repo: Path) -> dict:
     return json.loads((repo / ".harness/manifest.json").read_text(encoding="utf-8"))
 
 
-def _write_manifest(repo: Path, data: dict) -> None:
+def _write_manifest(repo: Path, data: object) -> None:
     (repo / ".harness/manifest.json").write_text(
         json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
@@ -165,10 +164,9 @@ def test_added_vendored_file_is_detected():
         report["integrity"]
 
 
-def test_hand_patched_manifest_is_detected():
-    """The realistic evasion: someone edits a vendored file AND patches the
-    per-file digest so integrity would pass. The aggregate no longer digests
-    its own files map, and that is the tell."""
+def test_inconsistently_patched_manifest_is_detected():
+    """A partial manual update that changes a per-file digest but not the
+    aggregate is internally inconsistent and must not pass."""
     repo = _fresh_repo()
     victim = _a_vendored_py(repo)
     victim.write_bytes(victim.read_bytes() + b"\n# local edit\n")
@@ -179,7 +177,7 @@ def test_hand_patched_manifest_is_detected():
     _write_manifest(repo, data)            # ...but the aggregate is untouched
     report = st.evaluate(repo)
     assert report["verdict"] == st.DRIFT, (
-        "a hand-patched digest passed unnoticed — the aggregate self-check "
+        "an inconsistently patched digest passed — the aggregate self-check "
         "is not doing its job")
     assert "hand" in report["integrity"]["reason"], report["integrity"]
 
@@ -247,6 +245,36 @@ def test_corrupt_manifest_is_unknown():
     repo = _fresh_repo()
     (repo / ".harness/manifest.json").write_text("{ not json", encoding="utf-8")
     report = st.evaluate(repo)
+    assert report["verdict"] == st.UNKNOWN
+    assert report["exit_code"] == 2
+
+
+def test_structurally_invalid_manifests_are_unknown_not_exceptions():
+    valid = _manifest(_born_template())
+    variants: list[object] = [
+        [],
+        {**valid, "schema": "sdlc-init/manifest@999"},
+        {**valid, "status": "failed"},
+        {**valid, "engine": "not-an-object"},
+        {**valid, "engine": {**valid["engine"], "vendored": ["bad"]}},
+        {**valid, "engine": {**valid["engine"], "vendored": {
+            "sha256": "bad", "files": ["bad"]}}},
+    ]
+    for value in variants:
+        repo = _fresh_repo()
+        _write_manifest(repo, value)
+        report = st.evaluate(repo)
+        assert report["verdict"] == st.UNKNOWN, value
+        assert report["exit_code"] == 2, value
+
+
+def test_unreadable_vendored_tree_is_unknown(monkeypatch):
+    def denied(_target: Path) -> dict[str, str]:
+        raise PermissionError("denied for test")
+
+    monkeypatch.setattr(st, "hash_installed", denied)
+    report = st.evaluate(_born_template())
+    assert report["integrity"]["verdict"] == st.UNKNOWN
     assert report["verdict"] == st.UNKNOWN
     assert report["exit_code"] == 2
 

@@ -62,8 +62,11 @@ stack exists.
 - `sdlc status [--target DIR] [--engine-root DIR] [--json]` — reads the
   manifest back. **integrity** (always): the vendored `tools/qa/` tree on disk
   vs. the per-file sha256 init recorded — catches an edited, deleted or added
-  engine file, and catches a manifest hand-patched to match (the aggregate no
-  longer digests its own files map). **upstream** (only with `--engine-root`):
+  engine file, and catches an internally inconsistent manifest edit (the
+  aggregate no longer digests its own files map). This is drift detection,
+  not adversarial tamper proof: an actor able to rewrite both the local tree
+  and its unsigned local manifest can recompute every digest. **upstream**
+  (only with `--engine-root`):
   the recorded snapshot vs. what the engine ships today, naming the changed
   files — the "you are running last month's gate" signal. Exit 0 in sync, 1 on
   drift, 2 when a requested check could not run. A check that was *not*
