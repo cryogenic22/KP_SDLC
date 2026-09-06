@@ -229,11 +229,11 @@ LLM_MAX_TOKENS=1024
 # Run all tests
 make test
 
-# Or individually
+# Or individually (every suite runs under pytest — fail-closed on zero collection)
 cd quality-gate && python -m pytest tests/
-cd cathedral-keeper && for f in tests/test_*.py; do python "$f"; done
+cd cathedral-keeper && python -m pytest tests/
 cd fix-engine && python -m pytest tests/
-cd reporting && python tests/test_reporting.py
+cd reporting && python -m pytest tests/
 ```
 
 ## GitHub Actions

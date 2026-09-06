@@ -12,8 +12,7 @@ INIT_DIR := sdlc-init
 FE_DIR   := fix-engine
 # Component packages (Tier C spine): each dogfoods E1.7 and must run in the
 # blocking CI suite, not just at its own PR time — the reviewer's regression-
-# protection finding. Their targets run `python -m pytest <dir>` (fail-closed on
-# zero collection), NOT the per-file `python <file>` loop the older targets use.
+# protection finding.
 SCHEMAS_DIR := schemas
 RV_DIR      := runtime-verify
 EE_DIR      := eval-engine
@@ -34,84 +33,35 @@ test: test-qg test-ck test-reporting test-init test-harness test-schemas \
 	@echo ""
 	@echo "All test suites completed."
 
+# Every suite target runs under `python -m pytest <dir>`, the single blessed
+# idiom. pytest collects+runs every `test_*` regardless of a `__main__`
+# self-runner (two observatory files are fixture-only, and the older per-file
+# `python <file>` loop would import such a file, run ZERO tests, and exit 0 — a
+# vacuous green that ships a broken component) AND exits 5 on zero collection,
+# so an empty or renamed tests dir fails CLOSED too. The exact-command contract
+# in harness/selfci/tests/test_makefile_ci_contract.py pins each target to its
+# own dir with no failure mask; completeness (no on-disk suite left unwired) is
+# derived from disk there, not from a hand-maintained list.
 test-qg: ## Run Quality Gate tests
 	@echo "=== Quality Gate Tests ==="
-	@passed=0; failed=0; \
-	for f in $(QG_DIR)/tests/test_*.py; do \
-		if python "$$f"; then \
-			passed=$$((passed + 1)); \
-		else \
-			failed=$$((failed + 1)); \
-		fi; \
-	done; \
-	echo ""; \
-	echo "QG: $$passed passed, $$failed failed"; \
-	[ "$$failed" -eq 0 ]
+	python -m pytest $(QG_DIR)/tests/ -q
 
 test-ck: ## Run Cathedral Keeper tests
 	@echo "=== Cathedral Keeper Tests ==="
-	@passed=0; failed=0; \
-	for f in $(CK_DIR)/tests/test_*.py; do \
-		if python "$$f"; then \
-			passed=$$((passed + 1)); \
-		else \
-			failed=$$((failed + 1)); \
-		fi; \
-	done; \
-	echo ""; \
-	echo "CK: $$passed passed, $$failed failed"; \
-	[ "$$failed" -eq 0 ]
+	python -m pytest $(CK_DIR)/tests/ -q
 
 test-reporting: ## Run Reporting tests
 	@echo "=== Reporting Tests ==="
-	@passed=0; failed=0; \
-	for f in $(RPT_DIR)/tests/test_*.py; do \
-		if python "$$f"; then \
-			passed=$$((passed + 1)); \
-		else \
-			failed=$$((failed + 1)); \
-		fi; \
-	done; \
-	echo ""; \
-	echo "Reporting: $$passed passed, $$failed failed"; \
-	[ "$$failed" -eq 0 ]
+	python -m pytest $(RPT_DIR)/tests/ -q
 
 test-init: ## Run sdlc-init tests
 	@echo "=== sdlc-init Tests ==="
-	@passed=0; failed=0; \
-	for f in $(INIT_DIR)/tests/test_*.py; do \
-		if python "$$f"; then \
-			passed=$$((passed + 1)); \
-		else \
-			failed=$$((failed + 1)); \
-		fi; \
-	done; \
-	echo ""; \
-	echo "sdlc-init: $$passed passed, $$failed failed"; \
-	[ "$$failed" -eq 0 ]
+	python -m pytest $(INIT_DIR)/tests/ -q
 
 test-harness: ## Run harness tests (structural-floor, process, selfci)
 	@echo "=== Harness Tests ==="
-	@passed=0; failed=0; \
-	for f in harness/structural-floor/tests/test_*.py harness/process/tests/test_*.py harness/selfci/tests/test_*.py; do \
-		if python "$$f"; then \
-			passed=$$((passed + 1)); \
-		else \
-			failed=$$((failed + 1)); \
-		fi; \
-	done; \
-	echo ""; \
-	echo "Harness: $$passed passed, $$failed failed"; \
-	[ "$$failed" -eq 0 ]
+	python -m pytest harness/structural-floor/tests harness/process/tests harness/selfci/tests -q
 
-# The component suites run under `python -m pytest <dir>`, NOT the per-file
-# `python <file>` loop the older targets use. Two of observatory's test files
-# are pytest-fixture-only with no `__main__` self-runner, so `python <file>`
-# would import them and run ZERO tests while exiting 0 (a vacuous green that
-# ships a broken component). pytest collects+runs every test_* regardless of a
-# __main__ block AND exits 5 on zero collection, so an empty/renamed tests dir
-# fails closed too — zero-collection vacuity is prevented (masking vacuity is
-# guarded separately by the workflow/Makefile contract tests, not here).
 test-schemas: ## Run E1.7 schemas tests
 	@echo "=== Schemas (E1.7) Tests ==="
 	python -m pytest $(SCHEMAS_DIR)/tests/ -q
