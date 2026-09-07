@@ -238,10 +238,15 @@ def test_born_repo_ships_pretooluse_hook():
         assert settings_path.exists(), ".claude/settings.json not shipped"
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
         entries = settings["hooks"]["PreToolUse"]
-        commands = [h.get("command", "")
-                    for entry in entries for h in entry.get("hooks", [])]
-        assert any(".harness/hooks/reuse_injector.py" in c for c in commands), \
-            f"no PreToolUse command references the injector: {commands}"
+        handlers = [h for entry in entries for h in entry.get("hooks", [])]
+        assert any(
+            h.get("command") == "python"
+            and h.get("args") == [
+                "-P",
+                "${CLAUDE_PROJECT_DIR}/.harness/hooks/reuse_injector.py",
+            ]
+            for h in handlers
+        ), f"no cwd-independent PreToolUse injector handler: {handlers}"
         assert (t / ".harness/hooks/reuse_injector.py").exists(), \
             "injector script not shipped to .harness/hooks/"
 

@@ -7,9 +7,9 @@ import os
 import sys
 from pathlib import Path
 
-try:
+if __package__:
     from .events import append_event, normalize_claude_hook
-except ImportError:  # Direct execution: python observatory/claude_hook.py
+else:  # Direct execution puts this script's directory first on sys.path.
     from events import append_event, normalize_claude_hook
 
 

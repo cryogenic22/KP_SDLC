@@ -6,7 +6,8 @@ file has no imports outside the standard library). Wired from
 .claude/settings.json as:
 
     {"hooks": {"PreToolUse": [{"matcher": "Write|Edit", "hooks": [
-        {"type": "command", "command": "python -P .harness/hooks/reuse_injector.py",
+        {"type": "command", "command": "python",
+         "args": ["-P", "${CLAUDE_PROJECT_DIR}/.harness/hooks/reuse_injector.py"],
          "timeout": 15}]}]}}
 
 Contract (Claude Code PreToolUse hook):
