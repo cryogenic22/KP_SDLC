@@ -1,5 +1,8 @@
 name: structural-floor
 
+permissions:
+  contents: read
+
 # KP_SDLC dogfoods its own anti-tamper floor: protected-surface.txt generates
 # .github/CODEOWNERS, and this deterministic gate fails if they drift — so the
 # success-definition surface cannot be quietly relocated. Real teeth come from
@@ -12,6 +15,7 @@ on:
 jobs:
   protected-surface-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

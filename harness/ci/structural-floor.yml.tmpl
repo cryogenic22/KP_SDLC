@@ -1,5 +1,8 @@
 name: structural-floor
 
+permissions:
+  contents: read
+
 # The success-definition surface (protected-surface.txt) generates CODEOWNERS.
 # This deterministic gate fails if they drift, so the bar cannot be quietly
 # relocated to pass. Pair it with branch protection: require CODEOWNERS review
@@ -12,6 +15,7 @@ on:
 jobs:
   protected-surface-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -272,6 +272,10 @@ def build_mechanical(profile: Mapping) -> str:
         "  mechanical:\n"
         "    name: Mechanical guardrails\n"
         "    runs-on: ubuntu-latest\n"
+        "    timeout-minutes: 15\n"
+        "    permissions:\n"
+        "      contents: read\n"
+        "      security-events: write\n"
         "    steps:\n"
     )
     return header + "\n\n".join(_engine_steps(profile))
