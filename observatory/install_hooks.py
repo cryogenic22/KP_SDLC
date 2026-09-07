@@ -8,7 +8,7 @@ from typing import Any
 
 HOOK_EXECUTABLE = "python"
 HOOK_SCRIPT = "${CLAUDE_PROJECT_DIR}/observatory/claude_hook.py"
-HOOK_ARGS = ("-P", HOOK_SCRIPT)
+HOOK_ARGS = (HOOK_SCRIPT,)
 _LEGACY_HOOK_COMMANDS = {
     "python observatory/claude_hook.py",
     "python -P observatory/claude_hook.py",
