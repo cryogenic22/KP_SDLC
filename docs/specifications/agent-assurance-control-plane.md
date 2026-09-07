@@ -1,10 +1,10 @@
 # Agent Assurance Control Plane
 
-**Status:** Proposed for owner ratification (revision 2)  
-**Version:** 0.2  
+**Status:** Proposed for owner ratification (revision 3)  
+**Version:** 0.3  
 **Date:** 2026-09-07  
-**Supersedes:** v0.1 (2026-09-06). Revised against the independent review of
-2026-09-07; §21 records the disposition of every finding.  
+**Supersedes:** v0.1 (2026-09-06) and v0.2. Revised against two rounds of
+independent review; §21 records the disposition of every finding from both.  
 **Working name:** Keel  
 **Repository:** KP_SDLC  
 
@@ -92,7 +92,7 @@ This specification extends rather than replaces the current implementation:
 | Contract Gate (G2) | Contract-completeness evidence provider |
 | Runtime Verify (G4) | Runtime assertion evidence provider |
 | Eval Engine (G5) | Behavioural and trajectory evaluation provider |
-| NFR Gate (G6, currently open PR) | Non-functional budget evidence provider |
+| NFR Gate (G6 — closed prototype, PR #23) | Non-functional budget evidence provider, to be rebuilt on §6.2.1 |
 | `sdlc-init` | Installation, manifest and born-gated proof executor |
 | Observatory | Read-only live projection and operator experience |
 | CtxPack | System of record for context capture, recall and compaction |
@@ -200,7 +200,8 @@ execution:
   call_id: unique identity for this invocation
   attempt: integer >= 1
   idempotency_key: stable key for the intended effect
-  status: executed | replayed | resumed | retried | deduplicated
+  status: executed | replayed | resumed | deduplicated
+  retry_of: call_id of the previous attempt when attempt > 1
   replay_of: call_id of the original invocation when status != executed
   recorded_at: RFC3339 ingestion timestamp, distinct from observed_at
 privacy:
@@ -221,7 +222,10 @@ Rules:
 - A session with no terminal event becomes stale after a configurable TTL. It is
   not shown as actively waiting forever.
 - `call_id` is unique per invocation and never reused across attempts. A retry
-  is a new `call_id` with `attempt > 1` and `replay_of` naming the first attempt.
+  is a genuine re-execution: `status: executed`, a new `call_id`, `attempt > 1`,
+  and `retry_of` naming the previous attempt. `replay_of` is never used for a
+  retry, and `retried` is not a status — the distinction the model needs is
+  between work that ran again and a record that was replayed.
 - A replayed or deduplicated event reports the original observation time in
   `observed_at` and the replay time in `recorded_at`. Replay never refreshes
   freshness.
@@ -284,7 +288,8 @@ execution:
   call_id: unique identity for this production run
   attempt: integer >= 1
   idempotency_key: stable key for the intended effect
-  status: executed | replayed | resumed | retried | deduplicated
+  status: executed | replayed | resumed | deduplicated
+  retry_of: call_id of the previous attempt when attempt > 1
   replay_of: call_id of the original run when status != executed
 measurements: []             # typed quantities; see 6.2.1
 coverage:
@@ -302,7 +307,11 @@ Rules:
   different non-vacuous positive control.
 - Every declared surface is inspected, named as uninspected, or explicitly
   declared not applicable with a reason.
-- Evidence is immutable. A new run produces a new evidence ID.
+- Evidence is immutable. A new run produces a new evidence ID, and also a
+  `content_digest` computed over the canonical evidence payload of §6.3.1 —
+  the evidence minus its own occurrence metadata. Two runs over identical
+  inputs therefore carry different IDs and the same content digest, which is
+  what lets the engine recognize them as the same evidence.
 - Evidence must bind to a content digest or full commit SHA before it can support
   a merge or release decision.
 - Evidence older than its policy freshness window cannot support a fresh pass.
@@ -374,21 +383,29 @@ Evidence is produced by runs that retry, resume and replay. Provenance that
 cannot tell a fresh execution from a replayed record will eventually launder a
 stale result into a fresh pass. The `execution` block therefore carries
 `workflow_id`, `workflow_run_id`, `step_id`, `call_id`, `attempt`,
-`idempotency_key`, `status` and `replay_of`.
+`idempotency_key`, `status`, `retry_of` and `replay_of`.
+
+The model has exactly two states, and the whole point is that they are not
+confusable. Either the work ran — `status: executed`, whether this is the first
+attempt or the fourth — or a previously recorded result was reproduced, which
+is `replayed`, `resumed` or `deduplicated`. A retry is the first kind, not the
+second; it is not a distinct status, and it does not use `replay_of`.
 
 Rules:
 
-- `status: executed` is the only status that establishes freshness. `replayed`,
-  `resumed` and `deduplicated` carry the original run's timestamps forward and
-  are evaluated against the original `finished_at`.
-- `attempt > 1` requires `replay_of` to name a `call_id` already recorded for
-  the same `step_id`.
-- Evidence sharing an `idempotency_key` counts once toward `executed_count`. A
-  gate cannot be satisfied by re-running the same step until it passes unless
-  the profile explicitly permits retry-to-green and records the attempt count in
-  the decision.
+- `status: executed` establishes freshness, including a genuine re-execution
+  with `attempt > 1`. `replayed`, `resumed` and `deduplicated` carry the
+  original run's timestamps forward, are evaluated against the original
+  `finished_at`, and never refresh freshness.
+- `attempt > 1` requires `retry_of` to name a `call_id` already recorded for the
+  same `step_id`. `replay_of` is required for, and only for, the reproduced
+  statuses.
+- Evidence sharing an `idempotency_key` counts once toward `executed_count`.
 - Divergent outcomes under one `idempotency_key` produce a `CONTENDED` modifier
-  and block promotion until adjudicated.
+  and block promotion until adjudicated. **ACP-0 admits no exception**: there is
+  no retry-to-green allowance, so a step that failed and then passed under the
+  same key is contended rather than green. A profile-level relaxation would
+  need its own ratification and is out of scope for the pilot.
 - Replay is deterministic: replaying the recorded evidence for a decision must
   reproduce that decision's verdict, or the decision is `INCONCLUSIVE`.
 
@@ -416,9 +433,55 @@ Lifecycle and modifiers are separate from verdicts. Initial lifecycle values are
 `PROVISIONAL`, `EXPIRING`, `DRIFT`, `WAIVED`, `NO_APPROVER`, `UNSIGNED` and
 `CONTENDED`.
 
-A decision includes the subject digest, policy digest, evidence IDs, derived
-verdict, reason codes, uninspected surfaces, owner, generated time and expiry.
-No agent-authored boolean such as `approved: true` is accepted as a decision.
+A decision includes the subject digest, policy digest, evidence content
+digests, derived verdict, reason codes, uninspected surfaces, owner, generated
+time and expiry. No agent-authored boolean such as `approved: true` is accepted
+as a decision.
+
+#### 6.3.1 Canonical payload and the determinism requirement
+
+Evidence and decisions both carry two kinds of field, and conflating them makes
+determinism unstatable. A new run legitimately produces a new evidence ID, a new
+`call_id`, a new `workflow_run_id` and new timestamps — that is what makes the
+record auditable. If those fields sit inside the thing required to be
+reproducible, then no two runs can ever match and the requirement is impossible
+to satisfy rather than merely hard.
+
+Each document is therefore split:
+
+**The canonical payload** is what the decision is *about*. For evidence: the
+subject digest, producer tool and version, policy and config digests, the
+derived independence block, `outcome`, `executed_count`, `skipped_count`,
+coverage sets, typed `measurements` (excluding their own collection
+timestamps), and findings in a canonically ordered form. For a decision: the
+subject digest, policy digest, config digests, the evidence **content digests**
+in sorted order, the derived verdict, reason codes in sorted order, uninspected
+surfaces, the derived independence level with its binding caps, owner, and the
+freshness and expiry *policy window* — not the wall-clock instants.
+
+**The invocation envelope** is what happened when it was produced: evidence and
+decision IDs, `call_id`, `attempt`, `retry_of`, `replay_of`, `workflow_id`,
+`workflow_run_id`, `started_at`, `finished_at`, `recorded_at`, `latency_ms`,
+generation time, and the identity of the process that emitted it.
+
+Canonical serialization is UTF-8 JSON with object keys sorted, no insignificant
+whitespace, and arrays ordered by a rule stated in the schema rather than by
+discovery order. `content_digest` is `sha256` over those bytes.
+
+**The determinism requirement, stated so it can be met:** for the same canonical
+evidence set, the same policy and config digests, and the same subject digest,
+the canonical decision payload — and therefore its `content_digest` — is
+byte-identical across runs, machines and processes. The envelope differs on
+every run by design, and a difference confined to the envelope is not a
+determinism failure. A difference in the payload is, and it is a defect in the
+engine rather than an acceptable variation.
+
+Two consequences worth stating outright. A freshness *outcome* belongs in the
+payload while the timestamp it was computed from belongs in the envelope, so the
+same evidence evaluated inside and outside its window yields two payloads that
+differ — correctly, because the decision genuinely differs. And replay
+determinism (§6.2.2) is the same property viewed from the other end: replaying a
+decision's recorded evidence must reproduce its payload digest exactly.
 
 ### 6.4 `sdlc/lane-profile@1`
 
@@ -437,9 +500,12 @@ G1-to-G6 sequence:
 - maturity evidence requirements;
 - theme pack selection, which is presentation-only.
 
-Initial profiles should be `foundation`, `application`, `service`, `data`,
-`agentic` and `regulated`. Only `foundation` and `application` are required for
-the first pilot.
+**No lane profile is required for the ACP-0 pilot.** ACP-0 resolves a single
+hard-wired policy against one repository; profile resolution, the gate DAG and
+waiver logic begin at ACP-2, and this section describes the shape they take when
+they arrive. `foundation` and `application` are the first two to build then, and
+`service`, `data`, `agentic` and `regulated` follow as real repositories demand
+them.
 
 ## 7. Independence model
 
@@ -492,8 +558,15 @@ Rules:
   false on `main`. Review-based gates in this repository therefore derive at
   most level 2 (rule 1: no observer identity distinct from the actor), regardless
   of how the review was conducted. ACP-3's exit criteria cannot be honestly
-  demonstrated here until MR-1 lands. Deterministic checks running in protected
-  CI are unaffected and derive independently of the review question.
+  demonstrated here until MR-1 lands.
+- **Protected CI is necessary for level 3, not sufficient.** That a check ran on
+  a protected runner says where it executed, not whether it was independent of
+  the author. If the same change also modified the policy, configuration,
+  workflow or fixture the check runs under, rules 3 and 4 cap the derived level
+  no matter how protected the runner was — the author moved the goalposts and
+  then watched a trusted machine clear them. Evidence from protected CI reaches
+  level 3 only when the workload identity it ran under was not authored by the
+  same change.
 
 ## 8. Adapter contract
 
@@ -505,7 +578,11 @@ Every telemetry or evidence adapter declares:
 - required configuration and permissions;
 - output schema version;
 - freshness rule;
-- independence level and its proof;
+- the identity and proof inputs the engine's derivation consumes — actor,
+  observer, execution and workload identities, each with the evidence for its
+  `verification` word — and optionally a `claimed_level`, which is recorded and
+  never gates. An adapter does not declare its own independence: it declares
+  what the engine needs in order to derive it (§7);
 - privacy classification;
 - clean fixture and planted failing fixture;
 - last proof-of-fire result;
@@ -516,20 +593,25 @@ An adapter is `bound` only after its planted fixture has been caught. Missing or
 expired proof-of-fire makes the adapter inconclusive. Pin drift is a named
 finding and cannot retain a new passing decision until revalidated.
 
-The core initially ships adapters for:
+**ACP-0 ships exactly two adapters: Quality Gate and Cathedral Keeper.** Both
+are evidence adapters. No telemetry adapter ships in the pilot, so nothing in
+this section authorizes one.
 
-- Claude Code hooks;
-- CtxPack;
-- Quality Gate;
-- Cathedral Keeper;
+The list below is ACP-1's target set — what the registry is expected to cover
+once the protocol has been extracted from the two adapters that already exist,
+rather than designed ahead of them:
+
 - G1, G2, G4, G5 and G6 artifacts;
 - Git worktrees and repository state;
-- GitHub Actions artifacts and protected-check state.
+- GitHub Actions artifacts and protected-check state;
+- CtxPack (gated on the §10 sanitization gap being closed first).
 
-Codex and generic OpenTelemetry adapters follow after the canonical event and
-evidence contracts have passed the Claude pilot. Unknown harness events remain
-visible as `unknown`; adding a mapping must not require a dashboard schema
-change.
+Telemetry adapters — Claude Code hooks, Codex, and a generic OpenTelemetry
+ingestion option — belong to ACP-6 and follow the `sdlc/event@1` implementation,
+which the pilot defers entirely. When they arrive, unknown harness events remain
+visible as `unknown`, and adding a mapping must not require a dashboard schema
+change. The pilot that unlocks any of this is the ACP-0 **evidence** pilot of
+§18; there is no Claude telemetry pilot in the authorized scope.
 
 ## 9. Attestation mapping
 
@@ -794,8 +876,10 @@ test that merely inspects source text is insufficient for an enforcement claim.
 ### MR-0 — Restore a trustworthy main branch — **COMPLETE (2026-09-07)**
 
 **Priority:** P0  
-**Outcome:** achieved. `main` is `afa2210` with fresh passing `quality` and
-`structural-floor` runs, and there are no open pull requests.
+**Outcome:** achieved. At completion `main` was `afa2210` with fresh passing
+`quality` and `structural-floor` runs and no pull request open. Both are
+mutable facts stated as of 2026-09-07; this specification's own PR opened
+immediately afterwards, and the current head is whatever `main` says it is.
 
 The v0.1 merge sequence is superseded. What actually happened:
 
@@ -870,9 +954,11 @@ DAG, waivers, Observatory read models, themes, attestation and signing, maturity
 scoring.
 
 **Exit:** running `sdlc check` twice on the same SHA with the same policy yields
-byte-identical decisions; QG and CK artifacts are represented without losing
-details a reviewer needs; every row of the planted-negative matrix derives its
-required verdict; `sdlc explain` reproduces the arithmetic behind each verdict.
+a byte-identical canonical decision payload and `content_digest` (§6.3.1), with
+differences confined to the invocation envelope; QG and CK artifacts are
+represented without losing details a reviewer needs; every row of the
+planted-negative matrix derives its required verdict; `sdlc explain` reproduces
+the arithmetic behind each verdict.
 
 > **Authorization gate.** Everything from ACP-1 onward is a sketch of intent, not
 > approved work. None of it starts until the §18 pilot passes and the owner
@@ -905,11 +991,15 @@ current commit and policy digests; an uninspected required surface cannot pass.
 
 ### ACP-3 — Independence and identity
 
-**Priority:** P0  
-**Depends on:** ACP-0, ACP-2  
-**Deliverables:** actor/observer identity model, independence levels, author vs
-verifier comparison, gate eligibility matrix, no-approver and concentration
-findings.
+**Priority:** P1  
+**Depends on:** ACP-0, ACP-2, MR-1  
+**Deliverables — the delta over ACP-0 only.** ACP-0 already ships the four
+identities, the derivation rule set and the derived level; this package does not
+rebuild them. It adds: approval-gate eligibility (which identities may sign
+what), the author-versus-verifier comparison across a change rather than a
+single evidence record, `NO_APPROVER` and signer-concentration findings, and
+identity resolution against the hosting platform rather than the local
+environment.
 
 **Exit:** a self-reported agent receipt cannot satisfy a level-3 gate; protected
 CI can; no eligible signer produces `HELD + NO_APPROVER`. The review-based half
@@ -1036,7 +1126,9 @@ Done when all of the following hold:
 2. It emits one `sdlc/decision@1` bound to that SHA, the QG/CK policy digests and
    the resolved config digests.
 3. Re-running it on the same SHA with the same policy produces a byte-identical
-   decision.
+   canonical decision payload and `content_digest` (§6.3.1). Evidence IDs,
+   `call_id`s and timestamps differ between the two runs, and a test asserts
+   both facts: the payloads match and the envelopes do not.
 4. Every row of the planted-negative matrix (§15.1) derives its required verdict:
    missing, malformed, zero-execution, stale and inadmissible-observer. In
    particular a QG result reporting `passed: true` with `executed_count: 0`
@@ -1121,6 +1213,24 @@ specification asserting something trunk contradicts:
   lane profiles. It protects the surfaces that exist today; the rest join
   `protected-surface.txt` in the PR that creates them, because a CODEOWNERS entry
   for a nonexistent path protects nothing.
+
+### 21.1 Second round — review of `c6f3206`
+
+The v0.2 revision was reviewed at its immutable head and blocked on five
+findings. All five were localized documentation corrections; none required a
+change of direction, and no new scope was added while fixing them.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | BLOCKER — the determinism requirement was internally impossible: evidence takes a new ID and new timestamps per run, yet two runs were required to be byte-identical | §6.3.1 splits both documents into a canonical payload and an invocation envelope, defines canonical serialization and `content_digest`, and restates determinism over the payload. ACP-0's exit and §18.1 item 3 now require payload equality *and* envelope difference, so the requirement is testable in both directions. |
+| 2 | MAJOR — retry and replay states disagreed: `retried` was a status, only `executed` established freshness, and a retry-to-green allowance contradicted the `CONTENDED` rule | Adopted the recommended model. `retried` is removed from both status enums; a real retry is `status: executed` with `attempt > 1` and a new `retry_of` field; `replay_of` is reserved for reproduced statuses, which never refresh freshness. The retry-to-green allowance is deleted outright — ACP-0 admits no exception. |
+| 3 | MAJOR — pre-narrowing scope leaked back into the pilot via §6.4, §8 and ACP-3 | §6.4 states that no lane profile is required for ACP-0. §8 states that ACP-0 ships exactly two evidence adapters and recasts its list as ACP-1's target set, with telemetry moved to ACP-6 and the "Claude pilot" replaced by the ACP-0 evidence pilot. ACP-3 is restated as the delta over ACP-0 and demoted to P1 behind MR-1. |
+| 4 | MAJOR — wording still let provenance be overstated: adapters were asked to declare an "independence level and its proof", and protected CI read as sufficient | The adapter contract now asks for the derivation's identity and proof *inputs* plus an optional `claimed_level` that never gates. §7 gains an explicit rule that protected CI is necessary but not sufficient: if the same change authored the policy, config, workflow or fixture the check ran under, rules 3 and 4 cap the level regardless of runner. |
+| 5 | MINOR — mutable repository facts were stale inside the proposed source of truth | G6 is described as a closed prototype (PR #23) rather than an open PR, and MR-0's "no open pull requests" is qualified as the state at completion on 2026-09-07, with the note that this specification's own PR opened immediately afterwards. |
+
+The reviewer's instruction not to fold the controlled self-healing feature into
+ACP-0 while fixing these was followed: nothing about that loop changed here, and
+it remains a separate proposal (§19.2).
 
 ## Appendix A — External reference designs
 
