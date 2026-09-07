@@ -7,10 +7,11 @@ import os
 import sys
 from pathlib import Path
 
-try:
+if __package__:
     from .events import append_event, normalize_claude_hook
-except ImportError:  # Direct execution: python observatory/claude_hook.py
-    from events import append_event, normalize_claude_hook
+else:  # Direct execution with Python safe-path mode enabled.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from observatory.events import append_event, normalize_claude_hook
 
 
 def main() -> int:

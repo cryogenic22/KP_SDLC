@@ -102,8 +102,9 @@ Capture is designed to be safe to leave on and trivial to turn off:
 
 - **Disable for a session (no file edits):** set `OBSERVATORY_DISABLE=1`. The
   hook then exits 0 immediately as a no-op — nothing is captured.
-- **Uninstall:** remove the `python observatory/claude_hook.py` entries from
-  `.claude/settings.json` (they are additive, one per hook event). The CtxPack
+- **Uninstall:** remove the hook entries whose `args` reference
+  `${CLAUDE_PROJECT_DIR}/observatory/claude_hook.py` from `.claude/settings.json`
+  (they are additive, one per hook event). The CtxPack
   and reuse-injector hooks are independent and are never touched by install or
   uninstall.
 - **Fail-safe:** a capture error exits non-zero *without* the exit code 2 that

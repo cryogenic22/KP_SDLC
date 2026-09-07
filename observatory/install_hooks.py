@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-HOOK_COMMAND = "python observatory/claude_hook.py"
+HOOK_EXECUTABLE = "python"
+HOOK_SCRIPT = "${CLAUDE_PROJECT_DIR}/observatory/claude_hook.py"
+HOOK_ARGS = ("-P", HOOK_SCRIPT)
+_LEGACY_HOOK_COMMANDS = {
+    "python observatory/claude_hook.py",
+    "python -P observatory/claude_hook.py",
+}
 HOOK_EVENTS = (
     "SessionStart",
     "PreToolUse",
@@ -41,9 +47,9 @@ def install(root: Path) -> tuple[Path, list[str]]:
         entries = hooks.setdefault(event_name, [])
         if not isinstance(entries, list):
             raise ValueError(f"Claude hook '{event_name}' must be a JSON array")
-        if _has_command(entries):
+        if _normalize_handlers(entries):
             continue
-        entries.append({"hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 5}]})
+        entries.append({"hooks": [_hook_handler()]})
         added.append(event_name)
 
     temporary = settings_path.with_suffix(".json.tmp")
@@ -52,12 +58,43 @@ def install(root: Path) -> tuple[Path, list[str]]:
     return settings_path, added
 
 
-def _has_command(entries: list[Any]) -> bool:
+def _hook_handler() -> dict[str, Any]:
+    return {
+        "type": "command",
+        "command": HOOK_EXECUTABLE,
+        "args": list(HOOK_ARGS),
+        "timeout": 5,
+    }
+
+
+def _is_observatory_handler(hook: Any) -> bool:
+    if not isinstance(hook, dict):
+        return False
+    if hook.get("command") in _LEGACY_HOOK_COMMANDS:
+        return True
+    return (
+        hook.get("command") == HOOK_EXECUTABLE
+        and hook.get("args") == list(HOOK_ARGS)
+    )
+
+
+def _normalize_handlers(entries: list[Any]) -> bool:
+    """Migrate one Observatory handler and discard only its duplicates."""
+    found = False
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        for hook in entry.get("hooks", []):
-            if isinstance(hook, dict) and hook.get("command") == HOOK_COMMAND:
-                return True
-    return False
+        configured = entry.get("hooks")
+        if not isinstance(configured, list):
+            continue
+        normalized = []
+        for hook in configured:
+            if not _is_observatory_handler(hook):
+                normalized.append(hook)
+                continue
+            if not found:
+                normalized.append(_hook_handler())
+                found = True
+        entry["hooks"] = normalized
+    return found
 

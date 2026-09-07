@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,7 +14,12 @@ import io  # noqa: E402
 from observatory import claude_hook  # noqa: E402
 from observatory.events import append_event, normalize_claude_hook, read_events  # noqa: E402
 from observatory.health import SnapshotBuilder  # noqa: E402
-from observatory.install_hooks import HOOK_COMMAND, HOOK_EVENTS, install  # noqa: E402
+from observatory.install_hooks import (  # noqa: E402
+    HOOK_ARGS,
+    HOOK_EVENTS,
+    HOOK_EXECUTABLE,
+    install,
+)
 
 
 def _write_json(path: Path, value) -> None:
@@ -98,9 +105,90 @@ def test_hook_installer_merges_and_is_idempotent(tmp_path):
     assert set(first_added) == set(HOOK_EVENTS)
     assert second_added == []
     assert installed["hooks"]["PreCompact"][0]["hooks"][0]["command"].startswith("python -m ctxpack")
-    commands = [hook["command"] for entry in installed["hooks"]["PreCompact"]
+    handlers = [hook for entry in installed["hooks"]["PreCompact"]
                 for hook in entry.get("hooks", [])]
-    assert commands.count(HOOK_COMMAND) == 1
+    assert sum(
+        hook.get("command") == HOOK_EXECUTABLE
+        and hook.get("args") == list(HOOK_ARGS)
+        for hook in handlers
+    ) == 1
+
+
+def test_hook_installer_migrates_legacy_cwd_relative_handler(tmp_path):
+    settings = tmp_path / ".claude" / "settings.json"
+    _write_json(settings, {"hooks": {"PreToolUse": [
+        {"hooks": [{"type": "command",
+                    "command": "python observatory/claude_hook.py",
+                    "timeout": 5}]},
+    ]}})
+
+    _, added = install(tmp_path)
+    installed = json.loads(settings.read_text(encoding="utf-8"))
+    handlers = [hook for entry in installed["hooks"]["PreToolUse"]
+                for hook in entry.get("hooks", [])]
+
+    assert "PreToolUse" not in added
+    assert handlers == [{
+        "type": "command",
+        "command": HOOK_EXECUTABLE,
+        "args": list(HOOK_ARGS),
+        "timeout": 5,
+    }]
+
+
+def test_hook_entrypoints_run_from_nested_working_directory(tmp_path):
+    nested = tmp_path / "project" / "nested"
+    nested.mkdir(parents=True)
+    environment = os.environ.copy()
+    environment["OBSERVATORY_DISABLE"] = "1"
+
+    for script, payload in (
+        (ROOT / "observatory" / "claude_hook.py", ""),
+        (ROOT / "harness" / "hooks" / "reuse_injector.py", "{}"),
+    ):
+        result = subprocess.run(
+            [sys.executable, "-P", str(script)],
+            cwd=nested,
+            env=environment,
+            input=payload,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0, (script, result.stderr)
+
+
+def test_shipped_hook_paths_are_anchored_to_project_root():
+    for relative_path in (
+        ".claude/settings.json",
+        "harness/templates/claude-settings.json.tmpl",
+    ):
+        settings = json.loads((ROOT / relative_path).read_text(encoding="utf-8"))
+        handlers = [
+            hook
+            for entries in settings["hooks"].values()
+            for entry in entries
+            for hook in entry.get("hooks", [])
+        ]
+        script_handlers = [
+            hook for hook in handlers
+            if any(
+                script in str(value)
+                for script in ("claude_hook.py", "reuse_injector.py")
+                for value in [hook.get("command"), *hook.get("args", [])]
+            )
+        ]
+
+        assert script_handlers, relative_path
+        for hook in script_handlers:
+            assert hook.get("command") == "python", (relative_path, hook)
+            script_args = [arg for arg in hook.get("args", []) if arg.endswith(".py")]
+            assert len(script_args) == 1, (relative_path, hook)
+            assert script_args[0].startswith("${CLAUDE_PROJECT_DIR}/"), (
+                relative_path,
+                hook,
+            )
 
 
 def test_disable_switch_is_a_fail_safe_noop(tmp_path, monkeypatch):
