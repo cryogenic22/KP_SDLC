@@ -13,7 +13,12 @@ protected-surface.txt @cryogenic22
 .github/CODEOWNERS @cryogenic22
 harness/structural-floor/gen_codeowners.py @cryogenic22
 .github/workflows/ @cryogenic22
-harness/ci/quality.yml.tmpl @cryogenic22
+harness/ci/ @cryogenic22
 harness/selfci/gen_quality_workflow.py @cryogenic22
 .claude/settings.json @cryogenic22
+AGENTS.md @cryogenic22
 CLAUDE.md @cryogenic22
+harness/hooks/ @cryogenic22
+harness/templates/AGENTS.md.tmpl @cryogenic22
+harness/templates/CLAUDE.md.tmpl @cryogenic22
+harness/templates/claude-settings.json.tmpl @cryogenic22

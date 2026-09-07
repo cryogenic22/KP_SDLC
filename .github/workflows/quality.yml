@@ -18,8 +18,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  security-events: write
 
 concurrency:
   group: quality-${{ github.ref }}
@@ -29,6 +27,10 @@ jobs:
   mechanical:
     name: Mechanical guardrails
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,6 +93,7 @@ jobs:
     name: Process guardrails
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -109,6 +112,7 @@ jobs:
     name: Reviewer surfaces (non-blocking)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: write
       contents: read
@@ -139,7 +143,9 @@ jobs:
             const sizeFlag = total > 500
               ? '⚠️ **Diff > 500 LOC** — review against the cited spec scope (Karpathy: surgical changes).'
               : '✅ Diff size within typical bounds.';
+            const marker = '<!-- kp-sdlc:reviewer-surface:v1 -->';
             const body = [
+              marker,
               '### Reviewer surfaces',
               '',
               `**Diff:** ${files} files · +${added} / -${deleted} lines`,
@@ -148,9 +154,25 @@ jobs:
               '',
               '_Reviewer surfaces are informational. Mechanical guardrails (ruff/mypy/QG/CK/tests) gate the merge._'
             ].join('\n');
-            github.rest.issues.createComment({
+            const params = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body
-            });
+              issue_number: context.issue.number
+            };
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { ...params, per_page: 100 }
+            );
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: params.owner,
+                repo: params.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({ ...params, body });
+            }

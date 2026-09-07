@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 _HERE = Path(__file__).resolve()
 sys.path.insert(0, str(_HERE.parents[1]))  # harness/selfci (gen_quality_workflow.py)
 _ROOT = _HERE.parents[3]                    # repo root
@@ -122,6 +124,32 @@ def test_engine_paths_not_vendor_paths():
     assert "Cathedral Keeper (architecture, report-only)" not in rendered
     assert "uv sync" not in rendered
     assert "python harness/selfci/gen_quality_workflow.py --check" in rendered
+
+
+def test_workflow_has_bounded_jobs_and_least_privilege():
+    """CI must time out predictably and grant write access only to the job
+    that posts the reviewer comment."""
+    tmpl = _tmpl_text()
+    rendered = render(tmpl)
+    workflow = yaml.safe_load(rendered)
+    jobs = workflow["jobs"]
+    assert workflow["permissions"] == {"contents": "read"}
+    assert jobs["mechanical"]["timeout-minutes"] == 15
+    assert jobs["mechanical"]["permissions"] == {
+        "contents": "read", "security-events": "write"}
+    assert jobs["process"]["timeout-minutes"] == 5
+    assert jobs["surface"]["timeout-minutes"] == 5
+    assert jobs["surface"]["permissions"] == {
+        "pull-requests": "write", "contents": "read"}
+    assert "timeout-minutes: 30" in tmpl
+
+
+def test_reviewer_surface_comment_is_updated_not_duplicated():
+    rendered = render(_tmpl_text())
+    assert "<!-- kp-sdlc:reviewer-surface:v1 -->" in rendered
+    assert "github.rest.issues.listComments" in rendered
+    assert "github.rest.issues.updateComment" in rendered
+    assert "github.rest.issues.createComment" in rendered
 
 
 # ── Semantic predicates over the RENDERED workflow ────────────────────
