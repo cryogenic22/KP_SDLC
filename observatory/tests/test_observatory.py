@@ -142,21 +142,25 @@ def test_hook_entrypoints_run_from_nested_working_directory(tmp_path):
     environment = os.environ.copy()
     environment["OBSERVATORY_DISABLE"] = "1"
 
-    for script, payload in (
-        (ROOT / "observatory" / "claude_hook.py", ""),
-        (ROOT / "harness" / "hooks" / "reuse_injector.py", "{}"),
-    ):
-        result = subprocess.run(
-            [sys.executable, "-P", str(script)],
-            cwd=nested,
-            env=environment,
-            input=payload,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    observatory_script = ROOT / "observatory" / "claude_hook.py"
+    observatory_result = _run_hook(observatory_script, nested, environment, "")
+    assert observatory_result.returncode == 0, observatory_result.stderr
 
-        assert result.returncode == 0, (script, result.stderr)
+    reuse_script = ROOT / "harness" / "hooks" / "reuse_injector.py"
+    reuse_result = _run_hook(reuse_script, nested, environment, "{}")
+    assert reuse_result.returncode == 0, reuse_result.stderr
+
+
+def _run_hook(script: Path, cwd: Path, environment: dict[str, str], payload: str):
+    return subprocess.run(
+        [sys.executable, "-P", str(script)],
+        cwd=cwd,
+        env=environment,
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def test_shipped_hook_paths_are_anchored_to_project_root():
