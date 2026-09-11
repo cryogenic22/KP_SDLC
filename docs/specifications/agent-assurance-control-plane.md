@@ -1,10 +1,11 @@
 # Agent Assurance Control Plane
 
-**Status:** Proposed for owner ratification (revision 3)  
-**Version:** 0.3  
-**Date:** 2026-09-07  
-**Supersedes:** v0.1 (2026-09-06) and v0.2. Revised against two rounds of
-independent review; §21 records the disposition of every finding from both.  
+**Status:** Proposed for owner ratification (revision 4)  
+**Version:** 0.4  
+**Date:** 2026-09-11  
+**Supersedes:** v0.1 (2026-09-06), v0.2 and v0.3. Revised against three rounds
+of independent review; §21 records the disposition of every finding from all
+three.  
 **Working name:** Keel  
 **Repository:** KP_SDLC  
 
@@ -240,6 +241,8 @@ Minimum fields:
 ```yaml
 schema: sdlc/evidence@1
 id: evd_...
+content_digest: sha256 over this document's canonical payload (§6.3.1);
+                the field is excluded from the bytes it digests
 subject:
   kind: git_commit | file | artifact | dataset | deployment | agent_session
   name: stable subject name
@@ -365,10 +368,10 @@ Rules:
 - Two measurements are comparable only when `metric_id`, `unit`, `statistic`,
   `workload.digest` and `environment.class` all match. A budget evaluated across
   a mismatch is `INCONCLUSIVE` with an explicit incomparability reason code.
-- `sample_count` below the profile's floor yields `INCONCLUSIVE`, not a pass on
-  one sample.
+- `sample_count` below the policy or profile floor yields `INCONCLUSIVE`, not a
+  pass on one sample.
 - `measurement_source: synthetic` and `vendor_report` are inadmissible for
-  blocking decisions unless the profile names them admissible.
+  blocking decisions unless the policy or profile names them admissible.
 - Unit conversion is explicit and recorded. The engine never guesses that `s`
   and `ms` were meant to be the same scale.
 - A budget comparison records the observed value, the limit, the margin and the
@@ -398,16 +401,25 @@ Rules:
   original run's timestamps forward, are evaluated against the original
   `finished_at`, and never refresh freshness.
 - `attempt > 1` requires `retry_of` to name a `call_id` already recorded for the
-  same `step_id`. `replay_of` is required for, and only for, the reproduced
-  statuses.
+  same **logical effect**: the same `idempotency_key`, the same subject digest
+  and the same producer. Where a `step_id` is present both records must also
+  share it; where there is no workflow context and `step_id` is absent, the
+  `idempotency_key` alone identifies the effect. A retry carrying no
+  `idempotency_key` has no lineage to check and is malformed, so it derives
+  `INCONCLUSIVE` rather than being accepted on the strength of its `attempt`
+  number. `replay_of` is required for, and only for, the reproduced statuses.
 - Evidence sharing an `idempotency_key` counts once toward `executed_count`.
 - Divergent outcomes under one `idempotency_key` produce a `CONTENDED` modifier
   and block promotion until adjudicated. **ACP-0 admits no exception**: there is
   no retry-to-green allowance, so a step that failed and then passed under the
   same key is contended rather than green. A profile-level relaxation would
   need its own ratification and is out of scope for the pilot.
-- Replay is deterministic: replaying the recorded evidence for a decision must
-  reproduce that decision's verdict, or the decision is `INCONCLUSIVE`.
+- Replay is deterministic: replaying a decision's recorded evidence with its
+  recorded `evaluated_as_of` must reproduce its canonical payload digest
+  exactly (§6.3.1), or the decision is `INCONCLUSIVE`. Replay reuses the
+  recorded instant rather than reading the clock; otherwise replaying an old
+  decision would re-age its evidence and could turn a recorded pass into a
+  staleness failure that never happened.
 
 ### 6.3 `sdlc/decision@1`
 
@@ -433,10 +445,11 @@ Lifecycle and modifiers are separate from verdicts. Initial lifecycle values are
 `PROVISIONAL`, `EXPIRING`, `DRIFT`, `WAIVED`, `NO_APPROVER`, `UNSIGNED` and
 `CONTENDED`.
 
-A decision includes the subject digest, policy digest, evidence content
-digests, derived verdict, reason codes, uninspected surfaces, owner, generated
-time and expiry. No agent-authored boolean such as `approved: true` is accepted
-as a decision.
+A decision includes `content_digest` — sha256 over its own canonical payload,
+excluded from the bytes it digests — plus the subject digest, policy digest,
+config digests, the evidence content digests, derived verdict, reason codes,
+uninspected surfaces, owner, `evaluated_as_of`, generated time and expiry. No
+agent-authored boolean such as `approved: true` is accepted as a decision.
 
 #### 6.3.1 Canonical payload and the determinism requirement
 
@@ -462,26 +475,49 @@ freshness and expiry *policy window* — not the wall-clock instants.
 **The invocation envelope** is what happened when it was produced: evidence and
 decision IDs, `call_id`, `attempt`, `retry_of`, `replay_of`, `workflow_id`,
 `workflow_run_id`, `started_at`, `finished_at`, `recorded_at`, `latency_ms`,
-generation time, and the identity of the process that emitted it.
+generation time, `evaluated_as_of`, and the identity of the process that emitted
+it.
 
-Canonical serialization is UTF-8 JSON with object keys sorted, no insignificant
-whitespace, and arrays ordered by a rule stated in the schema rather than by
-discovery order. `content_digest` is `sha256` over those bytes.
+**`evaluated_as_of` is an input, not a reading of the clock.** Freshness and
+expiry are computed against it rather than against wall-clock time at the moment
+of evaluation. Without it the engine is not a function at all: the same evidence,
+policy, config and subject would produce one payload before an expiry boundary
+and a different one after it, which is precisely the contradiction a
+determinism requirement has to exclude. The caller supplies it, the envelope
+records it, and replay reuses the recorded value rather than taking a fresh
+reading — otherwise replaying an old decision would silently re-age its
+evidence.
+
+**Canonical serialization is RFC 8785 (JSON Canonicalization Scheme).** The
+earlier wording — UTF-8 JSON, sorted keys, no insignificant whitespace — is not
+sufficient to pin bytes: it leaves string escaping, Unicode normalization and
+number formatting open, so `{"n":1.0,"text":"é"}` and its UTF-8-literal
+integer-valued equivalent both satisfy it and hash differently. JCS fixes key
+ordering, escaping and number serialization exactly. Three additions on top of
+it: arrays are ordered by a rule stated in the schema rather than by discovery
+order; non-finite numbers (`NaN`, `±Infinity`) are prohibited in a canonical
+payload, consistent with §6.2.1's domain guard; and `content_digest` is
+`sha256` over the canonical bytes of the payload *excluding the `content_digest`
+field itself*, since a field cannot contain a digest of itself.
 
 **The determinism requirement, stated so it can be met:** for the same canonical
-evidence set, the same policy and config digests, and the same subject digest,
-the canonical decision payload — and therefore its `content_digest` — is
-byte-identical across runs, machines and processes. The envelope differs on
-every run by design, and a difference confined to the envelope is not a
-determinism failure. A difference in the payload is, and it is a defect in the
-engine rather than an acceptable variation.
+evidence set, the same policy digest, the same resolved config digests, the same
+subject digest and the same `evaluated_as_of`, the canonical decision payload —
+and therefore its `content_digest` — is byte-identical across runs, machines and
+processes. The envelope differs on every run by design, and a difference
+confined to the envelope is not a determinism failure. A difference in the
+payload is, and it is a defect in the engine rather than an acceptable
+variation.
 
 Two consequences worth stating outright. A freshness *outcome* belongs in the
-payload while the timestamp it was computed from belongs in the envelope, so the
-same evidence evaluated inside and outside its window yields two payloads that
-differ — correctly, because the decision genuinely differs. And replay
-determinism (§6.2.2) is the same property viewed from the other end: replaying a
-decision's recorded evidence must reproduce its payload digest exactly.
+payload while the instant it was computed against is the envelope's
+`evaluated_as_of`, so the same evidence evaluated at two different
+`evaluated_as_of` values yields two payloads that differ — correctly, because
+the decision genuinely differs, and reproducibly, because the difference is
+driven by a recorded input rather than by when someone happened to run the
+command. And replay determinism (§6.2.2) is the same property viewed from the
+other end: replaying a decision's recorded evidence with its recorded
+`evaluated_as_of` must reproduce its payload digest exactly.
 
 ### 6.4 `sdlc/lane-profile@1`
 
@@ -518,9 +554,9 @@ verified inputs, and the level is the minimum of what those inputs support.
 |---|---|---|---|---|
 | 0 | any | any, or same as actor | any | any |
 | 1 | any | distinct from actor | harness hook outside the observed tool call | policy digest recorded |
-| 2 | verified (token or better) | distinct, verified | separate runner identity; `actor_can_mutate_config: false` | policy + config digests recorded and unchanged in this change |
-| 3 | verified (`signed_commit` or `oidc`) | `oidc`, protected CI | `runner: protected_ci` with OIDC issuer and subject | policy digest commit-bound; fixture digest with current proof-of-fire |
-| 4 | `attested` | `attested` | `runner: isolated` with environment attestation | all of level 3 plus attested workload digest |
+| 2 | verified (token or better) | distinct, verified | separate runner identity; `actor_can_mutate_config: false` | policy + config digests recorded; if this change edits the success-definition surface, rule 4 governs |
+| 3 | verified (`signed_commit` or `oidc`) | `oidc`, protected CI | `runner: protected_ci` with OIDC issuer and subject | policy digest commit-bound; the workload was not authored by this change, or was and carries a distinct CODEOWNER approval (rule 4); fixture digest with current proof-of-fire |
+| 4 | `attested` | `attested` | `runner: isolated` with environment attestation | all of level 3, with the workload **not** authored by this change — approval does not substitute at this level — plus an attested workload digest |
 
 The derivation is a floor test, evaluated in order, and the result is capped by
 whichever rule bites first:
@@ -529,8 +565,14 @@ whichever rule bites first:
 2. `verification: unverified` on the observer caps at 1.
 3. `actor_can_mutate_config: true` caps at 1 — an observer whose configuration
    the author can rewrite is not independent of the author.
-4. A change that also edits tests, policy, baselines, thresholds, adapters or
-   fixtures caps at 2 until a distinct CODEOWNER approves it.
+4. A change that also edits the **success-definition surface** — tests, policy,
+   configuration, thresholds, baselines, adapters, fixtures, or the CI workflow
+   the check runs under — caps the level at 2. A distinct CODEOWNER approval of
+   that same change lifts the cap to 3, and no further. Segregation of duties is
+   the control that levels up to 3 rest on, so an independent human ratifying
+   the new goalposts restores eligibility there; level 4 asserts an attested
+   workload, which no human approval can stand in for. This rule is the only
+   place the question is decided.
 5. Absent or expired proof-of-fire on the producing adapter caps at 2.
 6. Missing OIDC issuer/subject caps at 2; `runner: local` or `self_hosted_ci`
    caps at 2.
@@ -562,11 +604,11 @@ Rules:
 - **Protected CI is necessary for level 3, not sufficient.** That a check ran on
   a protected runner says where it executed, not whether it was independent of
   the author. If the same change also modified the policy, configuration,
-  workflow or fixture the check runs under, rules 3 and 4 cap the derived level
-  no matter how protected the runner was — the author moved the goalposts and
-  then watched a trusted machine clear them. Evidence from protected CI reaches
-  level 3 only when the workload identity it ran under was not authored by the
-  same change.
+  workflow or fixture the check runs under, rule 4 governs: the level is capped
+  at 2, and only a distinct CODEOWNER approval of that change lifts it to 3.
+  Otherwise the author moves the goalposts and a trusted machine clears them.
+  This bullet states no condition of its own — it points at rule 4, so there is
+  exactly one place the workload question is answered.
 
 ## 8. Adapter contract
 
@@ -603,8 +645,11 @@ rather than designed ahead of them:
 
 - G1, G2, G4, G5 and G6 artifacts;
 - Git worktrees and repository state;
-- GitHub Actions artifacts and protected-check state;
-- CtxPack (gated on the §10 sanitization gap being closed first).
+- GitHub Actions artifacts and protected-check state.
+
+CtxPack is deliberately **not** in that set. Its adapter, its sanitization
+contract and its health projection all belong to ACP-7, behind the §10 gap; no
+part of CtxPack is an ACP-1 deliverable.
 
 Telemetry adapters — Claude Code hooks, Codex, and a generic OpenTelemetry
 ingestion option — belong to ACP-6 and follow the `sdlc/event@1` implementation,
@@ -781,10 +826,11 @@ requires owner action; it does not silently switch itself off.
 - Today `protected-surface.txt` covers the QG engine and config, the ratchet
   baseline and its runtime overrides, the CK config, the floor mechanism itself,
   `.github/workflows/`, the shipped CI templates and the agent-session machinery.
-  Schemas, adapter bindings and lane profiles join it in the same PR that first
-  creates them (ACP-0 and ACP-1). This specification does not pre-register paths
-  that do not exist, because an unresolvable CODEOWNERS entry is a floor that
-  protects nothing.
+  Each remaining surface joins it in the PR that first creates it, under the
+  package that owns it: schemas at ACP-0, adapter bindings at ACP-1, lane
+  profiles at ACP-2. This specification does not pre-register paths that do not
+  exist, because an unresolvable CODEOWNERS entry is a floor that protects
+  nothing.
 - Branch protection, CODEOWNERS approval and stale-approval dismissal are owner
   controls. No prompt substitutes for them.
 
@@ -861,7 +907,7 @@ qualify the component for an enforcement claim.
 | Malformed evidence | truncated/invalid artifact, wrong schema version | `INCONCLUSIVE` with a parse reason code | `PASS`, silent skip, crash |
 | Zero execution | artifact reports `passed: true` with `executed_count: 0` | `VOID` | `PASS`, `PASS_WITH_DEBT` |
 | Stale evidence | valid artifact bound to a prior commit or outside the freshness window | `INCONCLUSIVE` with a staleness reason code | `PASS` |
-| Inadmissible observer | valid, fresh artifact whose derived independence is below the profile's requirement | `INCONCLUSIVE` with an independence reason code | `PASS` |
+| Inadmissible observer | valid, fresh artifact whose derived independence is below the policy or profile requirement | `INCONCLUSIVE` with an independence reason code | `PASS` |
 
 Two properties are asserted alongside the matrix: a malformed artifact never
 crashes the run (it is counted and surfaced), and the planted failing fixture is
@@ -953,9 +999,10 @@ Codex, eval and gate adapters beyond QG/CK, lane-profile resolution, the gate
 DAG, waivers, Observatory read models, themes, attestation and signing, maturity
 scoring.
 
-**Exit:** running `sdlc check` twice on the same SHA with the same policy yields
-a byte-identical canonical decision payload and `content_digest` (§6.3.1), with
-differences confined to the invocation envelope; QG and CK artifacts are
+**Exit:** running `sdlc check` twice over the same subject digest, policy digest,
+resolved config digests and `evaluated_as_of` yields a byte-identical canonical
+decision payload and `content_digest` (§6.3.1), with differences confined to the
+invocation envelope; QG and CK artifacts are
 represented without losing details a reviewer needs; every row of the
 planted-negative matrix derives its required verdict; `sdlc explain` reproduces
 the arithmetic behind each verdict.
@@ -1125,10 +1172,13 @@ Done when all of the following hold:
    into `sdlc/evidence@1`, and records what each adapter dropped.
 2. It emits one `sdlc/decision@1` bound to that SHA, the QG/CK policy digests and
    the resolved config digests.
-3. Re-running it on the same SHA with the same policy produces a byte-identical
-   canonical decision payload and `content_digest` (§6.3.1). Evidence IDs,
-   `call_id`s and timestamps differ between the two runs, and a test asserts
-   both facts: the payloads match and the envelopes do not.
+3. Re-running it over the same subject digest, policy digest, resolved config
+   digests and `evaluated_as_of` produces a byte-identical canonical decision
+   payload and `content_digest` (§6.3.1). The two-run test pins
+   `evaluated_as_of` to a fixed value rather than reading the clock, so an
+   expiry boundary falling between the runs cannot make it flaky. Evidence IDs,
+   `call_id`s and timestamps still differ, and the test asserts both facts: the
+   payloads match and the envelopes do not.
 4. Every row of the planted-negative matrix (§15.1) derives its required verdict:
    missing, malformed, zero-execution, stale and inadmissible-observer. In
    particular a QG result reporting `passed: true` with `executed_count: 0`
@@ -1231,6 +1281,22 @@ change of direction, and no new scope was added while fixing them.
 The reviewer's instruction not to fold the controlled self-healing feature into
 ACP-0 while fixing these was followed: nothing about that loop changed here, and
 it remains a separate proposal (§19.2).
+
+### 21.2 Third round — review of `9262480`
+
+The v0.3 revision was reviewed at its immutable head. The five earlier findings
+were accepted as resolved; four contradictions remained in the revised normative
+text, plus a retry-lineage gap and stale PR metadata. All corrections are
+documentation-only.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | BLOCKER — determinism was still not a well-defined function: the same inputs were required to produce an identical payload, yet were said to correctly produce a different one across a freshness boundary | Freshness now has an explicit stable input. `evaluated_as_of` is a caller-supplied instant recorded in the envelope; freshness and expiry are computed against it, never against the clock, and replay reuses the recorded value. The determinism precondition and both pilot statements name every input: subject digest, policy digest, **resolved config digests** and `evaluated_as_of`. §18.1 item 3 pins `evaluated_as_of` in the two-run test so an expiry boundary between runs cannot make it flaky. |
+| 2 | MAJOR — the encoding did not guarantee canonical bytes; escaping, Unicode and number formatting were open | Canonical serialization is now **RFC 8785 (JCS)**, which fixes key ordering, escaping and number serialization exactly; the cited `1.0` / `é` counter-example is closed. Three additions: schema-stated array ordering, non-finite numbers prohibited (consistent with §6.2.1), and `content_digest` computed over the payload *excluding the `content_digest` field itself*. The field is now named in both minimum document shapes. |
+| 3 | MAJOR — the level-3 workload cap had conflicting escape rules across rule 4, the new protected-CI rule and the level table | Decided and encoded once: a distinct CODEOWNER approval of the same change **lifts the cap to 3 and no further**, because segregation of duties is the control levels up to 3 rest on while level 4 asserts an attested workload no approval substitutes for. Rule 4 now names configuration and the CI workflow alongside tests, policy, baselines, thresholds, adapters and fixtures. The level table rows 2-4 defer to rule 4, and the protected-CI bullet states no condition of its own. |
+| 4 | MAJOR — ACP ownership was still inconsistent | One owner per surface. CtxPack is removed from §8's ACP-1 set and assigned wholly to ACP-7. §13 sequences the floor by owning package: schemas at ACP-0, adapter bindings at ACP-1, lane profiles at ACP-2. Every place the hard-wired ACP-0 policy is valid now reads "policy or profile" — the §15.1 inadmissible-observer row, the §6.2.1 sample floor, and the measurement-source admissibility rule. |
+| 5 | MINOR — PR metadata stale | Title and body updated to v0.4 at the new head, with the current suite count and completed CI. No document change. |
+| — | Retry lineage under-specified: `attempt > 1` required only a shared optional `step_id` | `retry_of` must now name a call recorded for the same **logical effect** — same `idempotency_key`, subject digest and producer — sharing `step_id` where one exists. The non-workflow case is defined: with no `step_id`, the `idempotency_key` alone identifies the effect, and a retry carrying none is malformed and derives `INCONCLUSIVE`. |
 
 ## Appendix A — External reference designs
 
