@@ -69,10 +69,16 @@ _LOCAL_ONLY_PATHS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("local scan output", re.compile(r"^\.quality-reports/")),
 )
 
-# Reviewed exceptions. Empty on purpose: an entry here is a decision that a
-# specific path may carry something a rule flags, and it belongs in review
-# because this file is a protected surface.
-ALLOW: dict[str, str] = {}
+# Reviewed exceptions, scoped to one rule per path rather than muting a file
+# wholesale. Empty on purpose. An entry would be a decision that a specific path
+# may carry a specific shape, and it belongs in review because this file is a
+# protected surface.
+#
+# The detector's own fixtures need no entry: every sample in `selftest()` is
+# assembled at runtime from fragments, so no flaggable literal appears in this
+# file's source. That is deliberate — an allowlist covering the scanner's own
+# source is precisely the entry that would later be widened to cover a real leak.
+ALLOW: dict[str, frozenset[str]] = {}
 
 
 @dataclass(frozen=True)
@@ -141,14 +147,13 @@ def scan_path(path: str) -> list[Finding]:
 def scan(rev: str = "HEAD", root: Path = REPO_ROOT) -> list[Finding]:
     findings: list[Finding] = []
     for path in release_paths(rev, root):
-        if path in ALLOW:
-            continue
-        findings.extend(scan_path(path))
+        allowed = ALLOW.get(path, frozenset())
+        findings.extend(f for f in scan_path(path) if f.rule not in allowed)
         data = blob(rev, path, root)
         if _is_binary(data):
             continue
         text = data.decode("utf-8", errors="replace")
-        findings.extend(scan_text(path, text))
+        findings.extend(f for f in scan_text(path, text) if f.rule not in allowed)
     return findings
 
 
@@ -161,16 +166,22 @@ def selftest() -> list[str]:
     """
     failures: list[str] = []
 
+    # Every sample is assembled from fragments, so this file's own source text
+    # contains no string its own rules would flag. Written as literals, the
+    # scanner reports itself, and the only remedies are an allowlist over the
+    # detector or a weaker rule — both worse than this small awkwardness.
+    bs = chr(92)
+    who = "ali" + "ce"
     positives = [
-        ("absolute-user-path", r"see C:\Users\alice\Downloads\thing for detail"),
-        ("absolute-user-path", "cd C:/Users/alice/Documents"),
-        ("absolute-user-path", "the log is at /home/alice/app.log"),
-        ("absolute-user-path", "open /Users/Alice/Library/x"),
-        ("credential", "token = sk-" + "A" * 24),
-        ("credential", "GH=ghp_" + "b" * 24),
-        ("credential", "key AKIA" + "A" * 16),
-        ("credential", "-----BEGIN RSA PRIVATE KEY-----"),
-        ("credential", "xoxb-" + "1" * 14),
+        ("absolute-user-path", "see C:" + bs + "Users" + bs + who + bs + "x"),
+        ("absolute-user-path", "cd C:/" + "Users/" + who + "/Documents"),
+        ("absolute-user-path", "the log is at /ho" + "me/" + who + "/app.log"),
+        ("absolute-user-path", "open /Us" + "ers/" + who.title() + "/Library/x"),
+        ("credential", "token = " + "sk-" + "A" * 24),
+        ("credential", "GH=" + "ghp_" + "b" * 24),
+        ("credential", "key " + "AKIA" + "A" * 16),
+        ("credential", "-----BEGIN RSA " + "PRIVATE KEY" + "-----"),
+        ("credential", "xox" + "b-" + "1" * 14),
     ]
     for rule, sample in positives:
         hits = {f.rule for f in scan_text("probe.txt", sample)}
@@ -178,10 +189,10 @@ def selftest() -> list[str]:
             failures.append(f"rule {rule!r} did not match its positive sample: {sample!r}")
 
     negatives = [
-        "a normal sentence about /home directories in general",
-        "install to C:\\Users\\<user>\\AppData if you must",
-        "the runner home is /home/runner/work and that is CI",
-        "sk-not-a-key",
+        "a normal sentence about /ho" + "me directories in general",
+        "install to C:" + bs + "Users" + bs + "<user>" + bs + "AppData",
+        "the runner home is /ho" + "me/runner/work and that is CI",
+        "sk-" + "not-a-key",
         "relative path .claude/ctx/public/decisions.md",
     ]
     for sample in negatives:
@@ -190,10 +201,10 @@ def selftest() -> list[str]:
             failures.append(f"false positive on {sample!r}: {[f.rule for f in hits]}")
 
     path_positives = [
-        ".claude/ctx/session-abc123.ctx",
-        ".claude/ctx/latest-gist.md",
-        ".claude/ctx/checkpoints.jsonl",
-        "Claude outputs/report.html",
+        ".claude/ctx/session-abc123" + ".ctx",
+        ".claude/ctx/latest-" + "gist.md",
+        ".claude/ctx/checkpoints" + ".jsonl",
+        "Claude out" + "puts/report.html",
     ]
     for sample in path_positives:
         if not scan_path(sample):

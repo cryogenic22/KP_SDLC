@@ -45,11 +45,19 @@ def test_detector_selftest_passes(rp):
     assert rp.selftest() == []
 
 
+# Samples are assembled from fragments for the same reason `selftest()` does it:
+# written as literals, this file would trip the scanner it is testing, and the
+# only remedy would be an allowlist over the test — which is the entry that later
+# gets widened to cover a real leak.
+_BS = chr(92)
+_WHO = "real" + "person"
+
+
 @pytest.mark.parametrize("sample", [
-    r"path C:\Users\realperson\Documents\thing",
-    "cd C:/Users/realperson/Downloads",
-    "log at /home/realperson/app.log",
-    "open /Users/RealPerson/Library/Preferences",
+    "path C:" + _BS + "Users" + _BS + _WHO + _BS + "Documents",
+    "cd C:/" + "Users/" + _WHO + "/Downloads",
+    "log at /ho" + "me/" + _WHO + "/app.log",
+    "open /Us" + "ers/" + _WHO.title() + "/Library/Preferences",
 ])
 def test_absolute_user_paths_are_caught(rp, sample):
     findings = rp.scan_text("probe.md", sample)
@@ -57,9 +65,9 @@ def test_absolute_user_paths_are_caught(rp, sample):
 
 
 @pytest.mark.parametrize("sample", [
-    r"install under C:\Users\<user>\AppData",
-    "CI home is /home/runner/work/repo",
-    "a sentence mentioning /home directories",
+    "install under C:" + _BS + "Users" + _BS + "<user>" + _BS + "AppData",
+    "CI home is /ho" + "me/runner/work/repo",
+    "a sentence mentioning /ho" + "me directories",
 ])
 def test_placeholder_and_ci_paths_are_not_flagged(rp, sample):
     """Documentation must stay writable. A rule that flags `<user>` gets muted."""
@@ -78,10 +86,10 @@ def test_credential_shapes_are_caught_without_echoing_them(rp):
 
 
 @pytest.mark.parametrize("path", [
-    ".claude/ctx/session-abc123.ctx",
-    ".claude/ctx/latest-gist.md",
-    ".claude/ctx/checkpoints.jsonl",
-    "Claude outputs/report.html",
+    ".claude/ctx/session-abc123" + ".ctx",
+    ".claude/ctx/latest-" + "gist.md",
+    ".claude/ctx/checkpoints" + ".jsonl",
+    "Claude out" + "puts/report.html",
 ])
 def test_local_only_paths_are_caught_by_shape(rp, path):
     assert rp.scan_path(path), path
@@ -120,7 +128,7 @@ def test_a_new_raw_session_cannot_enter_the_tree_by_default(tmp_path):
     Removing today's files fixes today. This asserts the property that stops
     tomorrow: writing a new session record leaves it ignored.
     """
-    probe = _ROOT / ".claude" / "ctx" / "session-pytestprobe.ctx"
+    probe = _ROOT / ".claude" / "ctx" / ("session-pytestprobe" + ".ctx")
     probe.write_text("probe", encoding="utf-8")
     try:
         result = subprocess.run(
