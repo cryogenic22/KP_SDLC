@@ -40,6 +40,40 @@ def smoke():
     return _load_driver()
 
 
+@pytest.mark.parametrize("config", [
+    "quality-gate/quality-gate.config.json",
+    "cathedral-keeper/cathedral-keeper.config.json",
+])
+def test_engines_exclude_the_staged_payload(config):
+    """The payload is build output and must not be scanned as source.
+
+    Found in CI, not locally: `pip install .` invokes the build backend, which
+    stages the payload *into the source tree*, so the next engine run scanned a
+    second copy of every harness file and the QG baseline ratchet reported 79
+    regressed files. Excluding it is the same treatment `build/` and `dist/`
+    already get.
+
+    The glob is derived from `PAYLOAD_DIRNAME` rather than written twice, so
+    renaming the staging directory fails here instead of silently un-excluding
+    it.
+    """
+    import json
+    import sys as _sys
+
+    _sys.path.insert(0, str(_ROOT / "sdlc-init"))
+    try:
+        from sdlc_init.engine_assets import PAYLOAD_DIRNAME
+    finally:
+        _sys.path.pop(0)
+
+    expected = f"**/{PAYLOAD_DIRNAME}/**"
+    data = json.loads((_ROOT / config).read_text(encoding="utf-8"))
+    assert expected in data["paths"]["exclude"], (
+        f"{config} does not exclude {expected}; a `pip install .` in CI stages "
+        "the payload into the tree and the engines then scan a duplicate copy "
+        "of every harness file")
+
+
 @pytest.fixture(scope="module")
 def installed(smoke, tmp_path_factory):
     """One wheel, one venv, shared by the checks below.

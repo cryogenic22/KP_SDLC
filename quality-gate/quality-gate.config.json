@@ -2,14 +2,20 @@
   "version": "1.0.0",
   "name": "Quality Gate (Portable Defaults)",
   "description": "Drop-in quality gates with PRS scoring. Override per repo via .quality-gate.json at the repo root.",
-
   "paths": {
     "include": [],
-    "extensions": [".py", ".ts", ".tsx", ".js", ".jsx"],
+    "extensions": [
+      ".py",
+      ".ts",
+      ".tsx",
+      ".js",
+      ".jsx"
+    ],
     "exclude": [
       "**/node_modules/**",
       "**/dist/**",
       "**/build/**",
+      "**/_payload/**",
       "**/.next/**",
       "**/.git/**",
       "**/__pycache__/**",
@@ -23,7 +29,6 @@
       "**/coverage/**"
     ]
   },
-
   "prs": {
     "enabled": true,
     "min_score": 85,
@@ -31,25 +36,38 @@
     "warning_weight": 2,
     "_note": "PRS = 100 - (errors*10) - (warnings*2). Files below min_score are blocked."
   },
-
   "baseline": {
     "path": ".quality-gate.baseline.json",
     "_note": "Per-file ratchet (Clean-as-You-Code): write via --mode baseline (refused in CI), commit the diff. Dormant until the file exists; --baseline overrides this path."
   },
-
   "rules": {
     "file_size": {
       "enabled": true,
       "severity": "error",
       "max_lines": 800,
       "warning_lines": 500,
-      "exceptions": ["**/*.generated.*", "**/schemas.*", "**/models.*"]
+      "exceptions": [
+        "**/*.generated.*",
+        "**/schemas.*",
+        "**/models.*"
+      ]
     },
-    "function_size": {"enabled": true, "severity": "error", "max_lines": 50, "warning_lines": 30},
+    "function_size": {
+      "enabled": true,
+      "severity": "error",
+      "max_lines": 50,
+      "warning_lines": 30
+    },
     "no_todo_fixme": {
       "enabled": true,
       "severity": "error",
-      "patterns": ["TODO", "FIXME", "XXX", "HACK", "BUG"],
+      "patterns": [
+        "TODO",
+        "FIXME",
+        "XXX",
+        "HACK",
+        "BUG"
+      ],
       "allow_with_issue": true,
       "issue_pattern": "(TODO|FIXME)\\s*\\(#\\d+\\)"
     },
@@ -57,24 +75,57 @@
       "enabled": true,
       "severity": "warning",
       "patterns": {
-        "javascript": ["console.log", "console.debug", "debugger"],
-        "typescript": ["console.log", "console.debug", "debugger"],
-        "python": ["breakpoint()", "pdb.set_trace", "import pdb"]
+        "javascript": [
+          "console.log",
+          "console.debug",
+          "debugger"
+        ],
+        "typescript": [
+          "console.log",
+          "console.debug",
+          "debugger"
+        ],
+        "python": [
+          "breakpoint()",
+          "pdb.set_trace",
+          "import pdb"
+        ]
       },
-      "exceptions": ["console.error", "console.info", "console.warn", "logger."]
+      "exceptions": [
+        "console.error",
+        "console.info",
+        "console.warn",
+        "logger."
+      ]
     },
     "no_type_escape": {
       "enabled": true,
       "severity": "warning",
-      "patterns": {"typescript": ["@ts-ignore", "@ts-nocheck"], "python": ["# type: ignore"]}
+      "patterns": {
+        "typescript": [
+          "@ts-ignore",
+          "@ts-nocheck"
+        ],
+        "python": [
+          "# type: ignore"
+        ]
+      }
     },
     "no_silent_catch": {
       "enabled": true,
       "severity": "error",
       "patterns": {
-        "python": ["except.*:\\s*pass", "except Exception:\\s*pass", "except:\\s*pass"],
-        "javascript": ["catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"],
-        "typescript": ["catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"]
+        "python": [
+          "except.*:\\s*pass",
+          "except Exception:\\s*pass",
+          "except:\\s*pass"
+        ],
+        "javascript": [
+          "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"
+        ],
+        "typescript": [
+          "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"
+        ]
       }
     },
     "no_hardcoded_secrets": {
@@ -87,33 +138,93 @@
         "token\\s*=\\s*['\"][A-Za-z0-9]{20,}['\"]",
         "-----BEGIN (RSA |EC )?PRIVATE KEY-----"
       ],
-      "exceptions": ["password=''", "password=\"\"", "test", "example", "placeholder"]
+      "exceptions": [
+        "password=''",
+        "password=\"\"",
+        "test",
+        "example",
+        "placeholder"
+      ]
     },
-    "no_duplicate_code": {"enabled": true, "severity": "warning", "min_lines": 4},
-    "max_complexity": {"enabled": true, "severity": "warning", "cyclomatic_max": 10},
-
-    "mutable_default": {"enabled": false, "severity": "error"},
-    "bare_except": {"enabled": false, "severity": "error"},
-    "sql_injection": {"enabled": false, "severity": "warning"},
-    "command_injection": {"enabled": false, "severity": "error"},
-
-    "no_eval": {"enabled": false, "severity": "error"},
-    "dangerously_set_html": {"enabled": false, "severity": "error", "exceptions": []},
-
-    "missing_test_assertion": {"enabled": false, "severity": "info"},
-    "test_isolation": {"enabled": false, "severity": "info"},
-    "test_naming": {"enabled": false, "severity": "info"},
-
-    "no_var": {"enabled": false, "severity": "error"},
-    "parameter_count": {"enabled": false, "severity": "warning", "max_parameters": 5},
-    "nesting_depth": {"enabled": false, "severity": "warning", "max_depth": 4},
-
-    "react_hooks_rules": {"enabled": false, "severity": "info"},
-    "missing_key_prop": {"enabled": false, "severity": "info"},
-
-    "dataclass_field_count": {"enabled": false, "severity": "info", "max_fields": 20},
-    "excessive_cast": {"enabled": false, "severity": "info", "max_casts": 12},
-
+    "no_duplicate_code": {
+      "enabled": true,
+      "severity": "warning",
+      "min_lines": 4
+    },
+    "max_complexity": {
+      "enabled": true,
+      "severity": "warning",
+      "cyclomatic_max": 10
+    },
+    "mutable_default": {
+      "enabled": false,
+      "severity": "error"
+    },
+    "bare_except": {
+      "enabled": false,
+      "severity": "error"
+    },
+    "sql_injection": {
+      "enabled": false,
+      "severity": "warning"
+    },
+    "command_injection": {
+      "enabled": false,
+      "severity": "error"
+    },
+    "no_eval": {
+      "enabled": false,
+      "severity": "error"
+    },
+    "dangerously_set_html": {
+      "enabled": false,
+      "severity": "error",
+      "exceptions": []
+    },
+    "missing_test_assertion": {
+      "enabled": false,
+      "severity": "info"
+    },
+    "test_isolation": {
+      "enabled": false,
+      "severity": "info"
+    },
+    "test_naming": {
+      "enabled": false,
+      "severity": "info"
+    },
+    "no_var": {
+      "enabled": false,
+      "severity": "error"
+    },
+    "parameter_count": {
+      "enabled": false,
+      "severity": "warning",
+      "max_parameters": 5
+    },
+    "nesting_depth": {
+      "enabled": false,
+      "severity": "warning",
+      "max_depth": 4
+    },
+    "react_hooks_rules": {
+      "enabled": false,
+      "severity": "info"
+    },
+    "missing_key_prop": {
+      "enabled": false,
+      "severity": "info"
+    },
+    "dataclass_field_count": {
+      "enabled": false,
+      "severity": "info",
+      "max_fields": 20
+    },
+    "excessive_cast": {
+      "enabled": false,
+      "severity": "info",
+      "max_casts": 12
+    },
     "_comment_python_pack": "=== Python Pack (migrated from Cathedral Keeper) ===",
     "missing_requests_timeout": {
       "enabled": true,
@@ -124,7 +235,12 @@
       "enabled": true,
       "severity": "warning",
       "_description": "sys.path.append/insert/extend calls. Prefer proper packaging or module layout.",
-      "exempt_files": ["conftest.py", "setup.py", "setup.cfg", "manage.py"]
+      "exempt_files": [
+        "conftest.py",
+        "setup.py",
+        "setup.cfg",
+        "manage.py"
+      ]
     },
     "mutable_default_argument": {
       "enabled": true,
@@ -141,7 +257,6 @@
       "severity": "warning",
       "_description": "__exit__ method body is only pass or empty. Resources from __enter__ never cleaned up."
     },
-
     "_comment_fastapi_pack": "=== FastAPI Pack ===",
     "sync_endpoint_with_io": {
       "enabled": true,
@@ -182,14 +297,28 @@
       "enabled": true,
       "severity": "warning",
       "_description": "Route handler without auth dependency. Publicly accessible endpoint.",
-      "exempt_routes": ["health", "healthz", "health_check", "ready", "readyz", "ping", "root", "docs", "redoc", "openapi", "login", "signup", "register", "callback"]
+      "exempt_routes": [
+        "health",
+        "healthz",
+        "health_check",
+        "ready",
+        "readyz",
+        "ping",
+        "root",
+        "docs",
+        "redoc",
+        "openapi",
+        "login",
+        "signup",
+        "register",
+        "callback"
+      ]
     },
     "discarded_query_result": {
       "enabled": true,
       "severity": "error",
       "_description": "DB query expression without assignment or return. Query result silently discarded."
     },
-
     "_comment_langchain_pack": "=== LangChain / LangGraph Pack ===",
     "unbounded_graph_execution": {
       "enabled": true,
@@ -226,7 +355,6 @@
       "severity": "error",
       "_description": "f-string or .format() in PromptTemplate/ChatPromptTemplate. Prompt injection vulnerability."
     },
-
     "_comment_ai_smells_pack": "=== AI Code Smells Pack ===",
     "dead_variable": {
       "enabled": true,
@@ -236,12 +364,12 @@
     "nested_enumeration": {
       "enabled": true,
       "severity": "warning",
-      "_description": "Nested for-loop over static collection. O(n²) when an index/set lookup would be O(n)."
+      "_description": "Nested for-loop over static collection. O(n\u00b2) when an index/set lookup would be O(n)."
     },
     "linear_search_in_loop": {
       "enabled": true,
       "severity": "warning",
-      "_description": "'if x in list' inside loop. O(m×n) — convert list to set for O(1) lookups."
+      "_description": "'if x in list' inside loop. O(m\u00d7n) \u2014 convert list to set for O(1) lookups."
     },
     "redundant_recomputation": {
       "enabled": true,
@@ -253,7 +381,6 @@
       "severity": "warning",
       "_description": "Function parameter never referenced in body. Indicates incomplete refactoring."
     },
-
     "_comment_neo4j_pack": "=== Neo4j Pack ===",
     "unbounded_cypher_query": {
       "enabled": true,
@@ -285,7 +412,6 @@
       "severity": "warning",
       "_description": "driver.session() without context manager. Leaks connections."
     },
-
     "_comment_mongodb_pack": "=== MongoDB Pack ===",
     "unbounded_find": {
       "enabled": true,
@@ -307,7 +433,6 @@
       "severity": "warning",
       "_description": "$push without $slice. Array grows unbounded toward 16MB document limit."
     },
-
     "_comment_databases_pack": "=== Cross-Cutting Database Pack ===",
     "connection_string_in_code": {
       "enabled": true,
@@ -334,12 +459,11 @@
       "severity": "info",
       "_description": "FastAPI app with database but no /health endpoint for connectivity checks."
     },
-
     "_comment_performance_pack": "=== Performance Pack ===",
     "db_call_in_loop": {
       "enabled": true,
       "severity": "error",
-      "_description": "Database query inside for loop. N+1 pattern — use batch query instead."
+      "_description": "Database query inside for loop. N+1 pattern \u2014 use batch query instead."
     },
     "missing_pagination": {
       "enabled": true,
@@ -359,7 +483,7 @@
     "string_concat_in_loop": {
       "enabled": true,
       "severity": "warning",
-      "_description": "String += inside loop. Quadratic memory allocation — use list + join."
+      "_description": "String += inside loop. Quadratic memory allocation \u2014 use list + join."
     },
     "regex_compile_in_loop": {
       "enabled": true,
@@ -376,7 +500,6 @@
       "severity": "warning",
       "_description": "list(query) or .all() in route handler without pagination. Loads entire dataset into memory."
     },
-
     "_comment_sqlalchemy_pack": "=== SQLAlchemy Pack ===",
     "sync_session_in_async": {
       "enabled": true,
@@ -413,7 +536,6 @@
       "severity": "warning",
       "_description": "Module-level class instance with mutable state (self.cache={}). Thread-unsafe under concurrent load."
     },
-
     "_comment_docparse_pack": "=== Document Parsing Pack ===",
     "missing_confidence_filter": {
       "enabled": true,
@@ -435,7 +557,6 @@
       "severity": "info",
       "_description": "Document parsing without caching. Re-parsing identical documents wastes money."
     },
-
     "_comment_nextjs_pack": "=== Next.js / React Pack ===",
     "useeffect_dependency_array": {
       "enabled": true,
@@ -457,7 +578,6 @@
       "severity": "warning",
       "_description": "Raw <img> tag in Next.js app. Use next/image <Image> for optimisation."
     },
-
     "_comment_security_pack": "=== Security Enhancements ===",
     "env_variable_exposure": {
       "enabled": true,
@@ -472,7 +592,7 @@
     "secret_in_env_default": {
       "enabled": true,
       "severity": "error",
-      "_description": "os.getenv('SECRET', 'real-value') — live secrets as fallback defaults. Persists in git history."
+      "_description": "os.getenv('SECRET', 'real-value') \u2014 live secrets as fallback defaults. Persists in git history."
     },
     "empty_security_config": {
       "enabled": true,
@@ -482,7 +602,7 @@
     "sql_string_interpolation": {
       "enabled": true,
       "severity": "error",
-      "_description": "SQL query built with f-string or .format() — SQL injection risk."
+      "_description": "SQL query built with f-string or .format() \u2014 SQL injection risk."
     },
     "sensitive_data_in_logs": {
       "enabled": true,
@@ -494,7 +614,6 @@
       "severity": "error",
       "_description": "NEXT_PUBLIC_/REACT_APP_/VITE_ variables containing SECRET/KEY/PASSWORD. Bundled into client JS."
     },
-
     "_comment_ai_smells_phase4": "=== AI Code Smells Phase 4 ===",
     "excessive_defensive_checks": {
       "enabled": true,
@@ -516,7 +635,6 @@
       "severity": "info",
       "_description": "Module with >5:1 private-to-public function ratio or >200 lines per public function."
     },
-
     "_comment_observability_pack": "=== Observability & Telemetry Pack ===",
     "missing_structured_logging": {
       "enabled": true,
@@ -538,7 +656,6 @@
       "severity": "info",
       "_description": "FastAPI app without /health or /healthz route. Load balancers cannot probe service health."
     },
-
     "_comment_ux_errors_pack": "=== UX Error Handling Pack ===",
     "generic_error_response": {
       "enabled": true,
@@ -555,7 +672,6 @@
       "severity": "warning",
       "_description": ".then() without .catch(), async handler without try/catch. Silent UI failures."
     },
-
     "_comment_ai_llm": "=== AI/LLM-Specific Quality Rules ===",
     "missing_await": {
       "enabled": true,
@@ -618,6 +734,8 @@
       "_description": "Unbounded file/document content sent to LLM without chunking. Token limit exceeded errors."
     }
   },
-
-  "thresholds": {"error_count": 0, "warning_count": 50}
+  "thresholds": {
+    "error_count": 0,
+    "warning_count": 50
+  }
 }
