@@ -1,11 +1,11 @@
 # Agent Assurance Control Plane
 
-**Status:** Proposed for owner ratification (revision 4)  
-**Version:** 0.4  
-**Date:** 2026-09-11  
-**Supersedes:** v0.1 (2026-09-06), v0.2 and v0.3. Revised against three rounds
-of independent review; §21 records the disposition of every finding from all
-three.  
+**Status:** Proposed for owner ratification (revision 5)  
+**Version:** 0.5  
+**Date:** 2026-09-12  
+**Supersedes:** v0.1 (2026-09-06), v0.2, v0.3 and v0.4. Revised against four
+rounds of independent review; §21 records the disposition of every finding from
+all four.  
 **Working name:** Keel  
 **Repository:** KP_SDLC  
 
@@ -415,7 +415,7 @@ Rules:
   same key is contended rather than green. A profile-level relaxation would
   need its own ratification and is out of scope for the pilot.
 - Replay is deterministic: replaying a decision's recorded evidence with its
-  recorded `evaluated_as_of` must reproduce its canonical payload digest
+  recorded `evaluation.as_of` must reproduce its canonical payload digest
   exactly (§6.3.1), or the decision is `INCONCLUSIVE`. Replay reuses the
   recorded instant rather than reading the clock; otherwise replaying an old
   decision would re-age its evidence and could turn a recorded pass into a
@@ -448,7 +448,8 @@ Lifecycle and modifiers are separate from verdicts. Initial lifecycle values are
 A decision includes `content_digest` — sha256 over its own canonical payload,
 excluded from the bytes it digests — plus the subject digest, policy digest,
 config digests, the evidence content digests, derived verdict, reason codes,
-uninspected surfaces, owner, `evaluated_as_of`, generated time and expiry. No
+uninspected surfaces, owner, the `evaluation` block (§6.3.1), generated time
+and expiry. No
 agent-authored boolean such as `approved: true` is accepted as a decision.
 
 #### 6.3.1 Canonical payload and the determinism requirement
@@ -469,32 +470,74 @@ coverage sets, typed `measurements` (excluding their own collection
 timestamps), and findings in a canonically ordered form. For a decision: the
 subject digest, policy digest, config digests, the evidence **content digests**
 in sorted order, the derived verdict, reason codes in sorted order, uninspected
-surfaces, the derived independence level with its binding caps, owner, and the
-freshness and expiry *policy window* — not the wall-clock instants.
+surfaces, the derived independence level with its binding caps, owner, the
+freshness and expiry *policy window*, and the **evaluation context** below.
 
 **The invocation envelope** is what happened when it was produced: evidence and
 decision IDs, `call_id`, `attempt`, `retry_of`, `replay_of`, `workflow_id`,
 `workflow_run_id`, `started_at`, `finished_at`, `recorded_at`, `latency_ms`,
-generation time, `evaluated_as_of`, and the identity of the process that emitted
-it.
+generation time, and the identity of the process that emitted it. The envelope
+holds nothing that changes a verdict.
 
-**`evaluated_as_of` is an input, not a reading of the clock.** Freshness and
-expiry are computed against it rather than against wall-clock time at the moment
-of evaluation. Without it the engine is not a function at all: the same evidence,
-policy, config and subject would produce one payload before an expiry boundary
-and a different one after it, which is precisely the contradiction a
-determinism requirement has to exclude. The caller supplies it, the envelope
-records it, and replay reuses the recorded value rather than taking a fresh
-reading — otherwise replaying an old decision would silently re-age its
-evidence.
+**The evaluation context is a semantic input, so it lives in the payload.**
+
+```yaml
+evaluation:
+  as_of: RFC3339 instant that freshness and expiry are computed against
+  source: protected_runner_clock | engine_clock | recorded_replay | caller_override
+  mode: promotion | replay | historical | test
+  skew_bound_s: the clock-skew tolerance the policy applied
+```
+
+Freshness is computed against `evaluation.as_of` rather than against the clock
+at the moment of evaluation, because without a stable input the engine is not a
+function at all: the same evidence, policy, config and subject would yield one
+payload before an expiry boundary and another after it.
+
+But a stable input that an arbitrary caller supplies is worse than no input. If
+the instant governing freshness sits outside the digested bytes, a caller can
+backdate it until stale evidence falls inside its window, or edit it afterwards,
+and the decision's `content_digest` still verifies — forging precisely the
+property the field was added to establish. The whole `evaluation` block is
+therefore **inside the canonical payload**: moving `as_of` by one second changes
+the payload, changes `content_digest`, and breaks replay. Backdating stops being
+undetectable and becomes a different decision.
+
+Admissible sources are bounded by mode:
+
+- A **promotion** decision — anything gating a merge or release — requires
+  `source: protected_runner_clock` or `engine_clock`. The engine or the protected
+  runner supplies the instant; the caller cannot. The value must sit within
+  `skew_bound_s` of the producing runner's clock, and must not precede the
+  `finished_at` of the evidence it evaluates, since evidence cannot be evaluated
+  before it existed.
+- `caller_override` is admissible **only** in `replay`, `historical` or `test`
+  mode, and a decision in any of those modes can never authorize a current
+  promotion. The mode is in the payload, so a replay-mode decision cannot later
+  be presented as a production one without changing its digest.
+- **replay** reuses the `as_of` bound in the payload it reproduces, with
+  `source: recorded_replay`. It never takes a fresh reading — otherwise
+  replaying an old decision would re-age its evidence and manufacture a
+  staleness failure that never happened.
+
+A decision whose evaluation context fails any of these conditions is
+`INCONCLUSIVE`. It is never `PASS`, and the failure is named rather than
+silently corrected to the current time.
 
 **Canonical serialization is RFC 8785 (JSON Canonicalization Scheme).** The
-earlier wording — UTF-8 JSON, sorted keys, no insignificant whitespace — is not
-sufficient to pin bytes: it leaves string escaping, Unicode normalization and
-number formatting open, so `{"n":1.0,"text":"é"}` and its UTF-8-literal
-integer-valued equivalent both satisfy it and hash differently. JCS fixes key
-ordering, escaping and number serialization exactly. Three additions on top of
-it: arrays are ordered by a rule stated in the schema rather than by discovery
+earlier wording — UTF-8 JSON, sorted keys, no insignificant whitespace — left
+string escaping and number formatting ambiguous, so `{"n":1.0,"text":"é"}` and
+its escaped, integer-valued equivalent both satisfied it and hashed differently.
+JCS fixes key ordering, string escaping and number serialization exactly.
+
+One JCS property is worth stating plainly rather than assuming the opposite: it
+performs **no Unicode normalization**. Parsed string data is preserved as-is, so
+two spellings of the same text differing only in normalization form remain
+different bytes and produce different digests. Canonicalization is not
+normalization. Producers are responsible for emitting consistent Unicode; the
+engine will not silently reconcile NFC and NFD on their behalf.
+
+Three additions on top of JCS: arrays are ordered by a rule stated in the schema rather than by discovery
 order; non-finite numbers (`NaN`, `±Infinity`) are prohibited in a canonical
 payload, consistent with §6.2.1's domain guard; and `content_digest` is
 `sha256` over the canonical bytes of the payload *excluding the `content_digest`
@@ -502,22 +545,23 @@ field itself*, since a field cannot contain a digest of itself.
 
 **The determinism requirement, stated so it can be met:** for the same canonical
 evidence set, the same policy digest, the same resolved config digests, the same
-subject digest and the same `evaluated_as_of`, the canonical decision payload —
+subject digest and the same `evaluation` block, the canonical decision payload —
 and therefore its `content_digest` — is byte-identical across runs, machines and
 processes. The envelope differs on every run by design, and a difference
 confined to the envelope is not a determinism failure. A difference in the
 payload is, and it is a defect in the engine rather than an acceptable
 variation.
 
-Two consequences worth stating outright. A freshness *outcome* belongs in the
-payload while the instant it was computed against is the envelope's
-`evaluated_as_of`, so the same evidence evaluated at two different
-`evaluated_as_of` values yields two payloads that differ — correctly, because
-the decision genuinely differs, and reproducibly, because the difference is
-driven by a recorded input rather than by when someone happened to run the
-command. And replay determinism (§6.2.2) is the same property viewed from the
-other end: replaying a decision's recorded evidence with its recorded
-`evaluated_as_of` must reproduce its payload digest exactly.
+Two consequences worth stating outright. Both the freshness *outcome* and the
+`evaluation` block it was computed from live in the payload, so the same
+evidence evaluated at two different instants yields two payloads that differ —
+correctly, because the decision genuinely differs; reproducibly, because the
+difference is driven by a recorded input rather than by when someone happened to
+run the command; and detectably, because that input is digested rather than
+asserted beside the digest. And replay determinism (§6.2.2) is the same property
+viewed from the other end: replaying a decision's recorded evidence with the
+`evaluation.as_of` bound in its payload must reproduce that payload's digest
+exactly.
 
 ### 6.4 `sdlc/lane-profile@1`
 
@@ -586,8 +630,9 @@ Rules:
 - An agent identity is never eligible to sign a human approval gate.
 - The author of a change cannot be the sole verifier where the profile requires
   segregation of duties.
-- Changing tests, policies, baselines, adapters or thresholds in the same change
-  raises the required independence level or requires CODEOWNERS approval.
+- Changes to the success-definition surface are governed by cap rule 4 above,
+  which names the full surface and the one approval that lifts it. This list
+  states no separate condition, so the single source of truth stays single.
 - The verifier records how it observed process, file and network behaviour.
   Claude/Codex hooks alone must not be described as OS-level runtime evidence.
 - A gate with no eligible approver is `HELD + NO_APPROVER`; it never auto-clears.
@@ -897,8 +942,8 @@ Every work package includes:
 
 ### 15.1 Planted-negative matrix
 
-Every adapter and every gate is tested against all five planted conditions, and
-each must derive the stated verdict. A test suite that omits a row does not
+Every adapter and every gate is tested against all seven planted conditions,
+and each must derive the stated verdict. A test suite that omits a row does not
 qualify the component for an enforcement claim.
 
 | Planted condition | Fixture | Required verdict | Must never derive |
@@ -908,11 +953,16 @@ qualify the component for an enforcement claim.
 | Zero execution | artifact reports `passed: true` with `executed_count: 0` | `VOID` | `PASS`, `PASS_WITH_DEBT` |
 | Stale evidence | valid artifact bound to a prior commit or outside the freshness window | `INCONCLUSIVE` with a staleness reason code | `PASS` |
 | Inadmissible observer | valid, fresh artifact whose derived independence is below the policy or profile requirement | `INCONCLUSIVE` with an independence reason code | `PASS` |
+| Backdated evaluation | stale evidence plus an `evaluation.as_of` moved backwards to bring it inside its window; and a promotion presented with `source: caller_override` or a non-`promotion` mode | `INCONCLUSIVE` with an evaluation-time reason code | `PASS` — a caller-supplied instant can never freshen evidence |
+| Tampered record | a recorded `content_digest` that does not recompute over the canonical payload, and an envelope field edited to disagree with the payload it echoes | `INCONCLUSIVE` with a tamper reason code | `PASS`, silent repair to the current time |
 
-Two properties are asserted alongside the matrix: a malformed artifact never
-crashes the run (it is counted and surfaced), and the planted failing fixture is
+Three properties are asserted alongside the matrix. A malformed artifact never
+crashes the run — it is counted and surfaced. The planted failing fixture is
 caught with a non-zero execution count, so the negative test is itself
-non-vacuous.
+non-vacuous. And altering a recorded `evaluation.as_of` by any amount changes
+the payload digest and fails replay, which is asserted directly rather than
+inferred from the field's position in the schema: the backdating test moves the
+instant, recomputes, and requires both the digest mismatch and the refusal.
 
 For adapter proof-of-fire, CI must run both the clean and planted fixtures. A
 test that merely inspects source text is insufficient for an enforcement claim.
@@ -1000,7 +1050,7 @@ DAG, waivers, Observatory read models, themes, attestation and signing, maturity
 scoring.
 
 **Exit:** running `sdlc check` twice over the same subject digest, policy digest,
-resolved config digests and `evaluated_as_of` yields a byte-identical canonical
+resolved config digests and `evaluation` block yields a byte-identical canonical
 decision payload and `content_digest` (§6.3.1), with differences confined to the
 invocation envelope; QG and CK artifacts are
 represented without losing details a reviewer needs; every row of the
@@ -1173,14 +1223,16 @@ Done when all of the following hold:
 2. It emits one `sdlc/decision@1` bound to that SHA, the QG/CK policy digests and
    the resolved config digests.
 3. Re-running it over the same subject digest, policy digest, resolved config
-   digests and `evaluated_as_of` produces a byte-identical canonical decision
+   digests and `evaluation` block produces a byte-identical canonical decision
    payload and `content_digest` (§6.3.1). The two-run test pins
-   `evaluated_as_of` to a fixed value rather than reading the clock, so an
-   expiry boundary falling between the runs cannot make it flaky. Evidence IDs,
+   `evaluation.as_of` to a fixed value under `mode: test` rather than reading
+   the clock, so an expiry boundary falling between the runs cannot make it
+   flaky. Evidence IDs,
    `call_id`s and timestamps still differ, and the test asserts both facts: the
    payloads match and the envelopes do not.
 4. Every row of the planted-negative matrix (§15.1) derives its required verdict:
-   missing, malformed, zero-execution, stale and inadmissible-observer. In
+   missing, malformed, zero-execution, stale, inadmissible-observer, backdated
+   evaluation and tampered record. In
    particular a QG result reporting `passed: true` with `executed_count: 0`
    derives `VOID`.
 5. Independence is derived, not read: evidence arriving with `independence_level`
@@ -1239,7 +1291,7 @@ The control plane succeeds only if it makes engineering decisions more truthful
 and less expensive to understand. A beautiful dashboard over stale, self-reported
 or vacuous evidence is a product failure.
 
-## 21. Disposition of the 2026-09-07 independent review
+## 21. Disposition of the independent reviews
 
 Recorded so the next reader can tell which parts of v0.1 were wrong and why,
 rather than inferring it from a diff.
@@ -1291,12 +1343,26 @@ documentation-only.
 
 | # | Finding | Disposition |
 |---|---|---|
-| 1 | BLOCKER — determinism was still not a well-defined function: the same inputs were required to produce an identical payload, yet were said to correctly produce a different one across a freshness boundary | Freshness now has an explicit stable input. `evaluated_as_of` is a caller-supplied instant recorded in the envelope; freshness and expiry are computed against it, never against the clock, and replay reuses the recorded value. The determinism precondition and both pilot statements name every input: subject digest, policy digest, **resolved config digests** and `evaluated_as_of`. §18.1 item 3 pins `evaluated_as_of` in the two-run test so an expiry boundary between runs cannot make it flaky. |
+| 1 | BLOCKER — determinism was still not a well-defined function: the same inputs were required to produce an identical payload, yet were said to correctly produce a different one across a freshness boundary | Freshness now has an explicit stable input. `evaluated_as_of` is a caller-supplied instant recorded in the envelope; freshness and expiry are computed against it, never against the clock, and replay reuses the recorded value. The determinism precondition and both pilot statements name every input: subject digest, policy digest, **resolved config digests** and `evaluated_as_of`. §18.1 item 3 pins it in the two-run test so an expiry boundary between runs cannot make it flaky. **Superseded in round 4:** a caller-supplied, envelope-resident instant is forgeable, and §21.3 records the correction. |
 | 2 | MAJOR — the encoding did not guarantee canonical bytes; escaping, Unicode and number formatting were open | Canonical serialization is now **RFC 8785 (JCS)**, which fixes key ordering, escaping and number serialization exactly; the cited `1.0` / `é` counter-example is closed. Three additions: schema-stated array ordering, non-finite numbers prohibited (consistent with §6.2.1), and `content_digest` computed over the payload *excluding the `content_digest` field itself*. The field is now named in both minimum document shapes. |
 | 3 | MAJOR — the level-3 workload cap had conflicting escape rules across rule 4, the new protected-CI rule and the level table | Decided and encoded once: a distinct CODEOWNER approval of the same change **lifts the cap to 3 and no further**, because segregation of duties is the control levels up to 3 rest on while level 4 asserts an attested workload no approval substitutes for. Rule 4 now names configuration and the CI workflow alongside tests, policy, baselines, thresholds, adapters and fixtures. The level table rows 2-4 defer to rule 4, and the protected-CI bullet states no condition of its own. |
 | 4 | MAJOR — ACP ownership was still inconsistent | One owner per surface. CtxPack is removed from §8's ACP-1 set and assigned wholly to ACP-7. §13 sequences the floor by owning package: schemas at ACP-0, adapter bindings at ACP-1, lane profiles at ACP-2. Every place the hard-wired ACP-0 policy is valid now reads "policy or profile" — the §15.1 inadmissible-observer row, the §6.2.1 sample floor, and the measurement-source admissibility rule. |
 | 5 | MINOR — PR metadata stale | Title and body updated to v0.4 at the new head, with the current suite count and completed CI. No document change. |
 | — | Retry lineage under-specified: `attempt > 1` required only a shared optional `step_id` | `retry_of` must now name a call recorded for the same **logical effect** — same `idempotency_key`, subject digest and producer — sharing `step_id` where one exists. The non-workflow case is defined: with no `step_id`, the `idempotency_key` alone identifies the effect, and a retry carrying none is malformed and derives `INCONCLUSIVE`. |
+
+### 21.3 Fourth round — review of `7a6f496`
+
+Round 3's corrections were accepted. One trust-boundary blocker remained, and it
+was introduced by round 3's own fix — worth recording plainly, because it is the
+characteristic failure of this kind of work: a field added to make something
+deterministic became a field an attacker could set.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | BLOCKER — freshness was forgeable. `evaluated_as_of` governed freshness and expiry while being caller-supplied and held only in the invocation envelope, which `content_digest` does not cover. A caller could backdate it so stale evidence passed, or edit it afterwards, and the digest still verified | Fixed on both dimensions. The instant is now part of an `evaluation` block — `as_of`, `source`, `mode`, `skew_bound_s` — that sits **inside the canonical payload**, so moving `as_of` by one second changes the payload, changes `content_digest` and breaks replay. Admissible sources are bounded by mode: a promotion decision requires `protected_runner_clock` or `engine_clock`, within `skew_bound_s` of the producing runner and never preceding the evidence's `finished_at`; `caller_override` is admissible only in `replay`, `historical` or `test` mode and can never authorize a current promotion; replay uses `recorded_replay` and the bound value. Failing any condition derives `INCONCLUSIVE`, never `PASS`, and is named rather than silently corrected to the current time. |
+| — | Two planted negatives required | §15.1 grows from five rows to seven. **Backdated evaluation** covers both the moved instant and a promotion presented with an untrusted source or non-promotion mode. **Tampered record** covers a `content_digest` that does not recompute and an envelope field edited to disagree with the payload it echoes. A third asserted property requires the backdating test to move the instant, recompute, and demand both the digest mismatch and the refusal — so the binding is proven, not assumed from the field's position in the schema. §18.1 item 4 names both. |
+| — | RFC 8785 does not normalize Unicode | The JCS paragraph no longer implies it does. It now says the earlier scheme left escaping and number formatting ambiguous, and states the preserve-as-is rule outright: canonicalization is not normalization, two normalization forms of the same text produce different digests, and producers are responsible for emitting consistent Unicode. |
+| — | §7's rule list partially restated cap rule 4 with the older, shorter surface list | The duplicate is removed and replaced by a pointer to rule 4, so the single source of truth stays single. |
 
 ## Appendix A — External reference designs
 
