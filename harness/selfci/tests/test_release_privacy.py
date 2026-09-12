@@ -122,7 +122,7 @@ def test_raw_session_memory_is_not_tracked():
         f"raw CtxPack artifacts are tracked and would ship: {unexpected}")
 
 
-def test_a_new_raw_session_cannot_enter_the_tree_by_default(tmp_path):
+def test_a_new_raw_session_cannot_enter_the_tree_by_default():
     """The ignore rule, not just the current file list.
 
     Removing today's files fixes today. This asserts the property that stops
@@ -142,7 +142,7 @@ def test_a_new_raw_session_cannot_enter_the_tree_by_default(tmp_path):
         probe.unlink(missing_ok=True)
 
 
-def test_the_public_path_is_still_trackable(tmp_path):
+def test_the_public_path_is_still_trackable():
     """The other half: the allowlisted path must not be swept up by the ignore."""
     probe = _ROOT / ".claude" / "ctx" / "public" / "_pytest_probe.md"
     probe.write_text("probe", encoding="utf-8")

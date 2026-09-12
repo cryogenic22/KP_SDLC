@@ -29,6 +29,7 @@ Exit codes: 0 clean, 1 findings, 2 usage/git error.
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import re
 import subprocess
@@ -47,9 +48,10 @@ PLACEHOLDER_USERS = frozenset({
 _WINDOWS_USER = re.compile(r"[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}([A-Za-z0-9_.-]+)")
 _POSIX_HOME = re.compile(r"/home/([a-z][a-z0-9_.-]*)/")
 _MAC_HOME = re.compile(r"/Users/([A-Za-z][A-Za-z0-9_.-]*)/")
+_USER_HOME_PATTERNS = (_WINDOWS_USER, _POSIX_HOME, _MAC_HOME)
 
 _CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("openai-style key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
+    ("sk-prefixed provider key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
     ("github token", re.compile(r"\b(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{20,}")),
     ("github fine-grained token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}")),
     ("aws access key id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
@@ -118,23 +120,48 @@ def _is_binary(data: bytes) -> bool:
     return b"\x00" in data[:8192]
 
 
-def scan_text(path: str, text: str) -> list[Finding]:
-    """Every rule, applied to one file's content."""
+def _line_number(offsets: list[int], position: int) -> int:
+    """1-based line for a character offset, via bisect over line starts."""
+    return bisect.bisect_right(offsets, position)
+
+
+def _credential_findings(path: str, text: str, offsets: list[int]) -> list[Finding]:
     findings: list[Finding] = []
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        for label, pattern in _CREDENTIAL_PATTERNS:
-            if pattern.search(line):
-                # Never echo the matched secret into a report.
-                findings.append(Finding(path, "credential", label, lineno))
-        for pattern in (_WINDOWS_USER, _POSIX_HOME, _MAC_HOME):
-            for match in pattern.finditer(line):
-                who = match.group(1)
-                if who.lower() in PLACEHOLDER_USERS:
-                    continue
-                findings.append(Finding(
-                    path, "absolute-user-path",
-                    f"home directory of {who!r}", lineno))
+    for label, pattern in _CREDENTIAL_PATTERNS:
+        for match in pattern.finditer(text):
+            # The label, never the matched secret, reaches the report.
+            findings.append(
+                Finding(path, "credential", label,
+                        _line_number(offsets, match.start())))
     return findings
+
+
+def _user_path_findings(path: str, text: str, offsets: list[int]) -> list[Finding]:
+    findings: list[Finding] = []
+    for pattern in _USER_HOME_PATTERNS:
+        for match in pattern.finditer(text):
+            who = match.group(1)
+            if who.lower() in PLACEHOLDER_USERS:
+                continue
+            findings.append(
+                Finding(path, "absolute-user-path", f"home directory of {who!r}",
+                        _line_number(offsets, match.start())))
+    return findings
+
+
+def scan_text(path: str, text: str) -> list[Finding]:
+    """Every content rule, applied once over the whole text.
+
+    Pattern-major rather than line-major: each compiled pattern sweeps the text
+    once and line numbers come from a bisect over line starts, so adding a rule
+    costs one pass rather than one pass per line.
+    """
+    offsets = [0]
+    for index, char in enumerate(text):
+        if char == "\n":
+            offsets.append(index + 1)
+    return (_credential_findings(path, text, offsets)
+            + _user_path_findings(path, text, offsets))
 
 
 def scan_path(path: str) -> list[Finding]:
@@ -157,70 +184,80 @@ def scan(rev: str = "HEAD", root: Path = REPO_ROOT) -> list[Finding]:
     return findings
 
 
-def selftest() -> list[str]:
-    """Prove every rule can fire and can stay silent.
+def _fixtures() -> dict[str, list]:
+    """Detector fixtures, assembled from fragments.
 
-    Returns a list of failure descriptions; empty means the detector works. This
-    exists because a scanner whose patterns silently match nothing reports a
-    clean tree and is indistinguishable from a clean tree.
+    Nothing here is a literal: written as one, this file's own source would trip
+    its own rules, and the only remedies would be an allowlist over the scanner
+    or a weaker rule — both worse than the awkwardness of concatenation.
     """
-    failures: list[str] = []
-
-    # Every sample is assembled from fragments, so this file's own source text
-    # contains no string its own rules would flag. Written as literals, the
-    # scanner reports itself, and the only remedies are an allowlist over the
-    # detector or a weaker rule — both worse than this small awkwardness.
     bs = chr(92)
     who = "ali" + "ce"
-    positives = [
-        ("absolute-user-path", "see C:" + bs + "Users" + bs + who + bs + "x"),
-        ("absolute-user-path", "cd C:/" + "Users/" + who + "/Documents"),
-        ("absolute-user-path", "the log is at /ho" + "me/" + who + "/app.log"),
-        ("absolute-user-path", "open /Us" + "ers/" + who.title() + "/Library/x"),
-        ("credential", "token = " + "sk-" + "A" * 24),
-        ("credential", "GH=" + "ghp_" + "b" * 24),
-        ("credential", "key " + "AKIA" + "A" * 16),
-        ("credential", "-----BEGIN RSA " + "PRIVATE KEY" + "-----"),
-        ("credential", "xox" + "b-" + "1" * 14),
-    ]
-    for rule, sample in positives:
-        hits = {f.rule for f in scan_text("probe.txt", sample)}
-        if rule not in hits:
-            failures.append(f"rule {rule!r} did not match its positive sample: {sample!r}")
+    return {
+        "content_positive": [
+            ("absolute-user-path", "see C:" + bs + "Users" + bs + who + bs + "x"),
+            ("absolute-user-path", "cd C:/" + "Users/" + who + "/Documents"),
+            ("absolute-user-path", "log at /ho" + "me/" + who + "/app.log"),
+            ("absolute-user-path", "open /Us" + "ers/" + who.title() + "/Lib/x"),
+            ("credential", "token = " + "sk-" + "A" * 24),
+            ("credential", "GH=" + "ghp_" + "b" * 24),
+            ("credential", "key " + "AKIA" + "A" * 16),
+            ("credential", "-----BEGIN RSA " + "PRIVATE KEY" + "-----"),
+            ("credential", "xox" + "b-" + "1" * 14),
+        ],
+        "content_negative": [
+            "a normal sentence about /ho" + "me directories in general",
+            "install to C:" + bs + "Users" + bs + "<user>" + bs + "AppData",
+            "the runner home is /ho" + "me/runner/work and that is CI",
+            "sk-" + "not-a-key",
+            "relative path .claude/ctx/public/decisions.md",
+        ],
+        "path_positive": [
+            ".claude/ctx/session-abc123" + ".ctx",
+            ".claude/ctx/latest-" + "gist.md",
+            ".claude/ctx/checkpoints" + ".jsonl",
+            "Claude out" + "puts/report.html",
+        ],
+        "path_negative": [
+            ".claude/settings.json",
+            ".claude/ctx/public/decisions.jsonl",
+            "docs/install.md",
+            "harness/skills/review-convergence/SKILL.md",
+        ],
+    }
 
-    negatives = [
-        "a normal sentence about /ho" + "me directories in general",
-        "install to C:" + bs + "Users" + bs + "<user>" + bs + "AppData",
-        "the runner home is /ho" + "me/runner/work and that is CI",
-        "sk-" + "not-a-key",
-        "relative path .claude/ctx/public/decisions.md",
-    ]
-    for sample in negatives:
-        hits = scan_text("probe.txt", sample)
+
+def _rules_hit(sample: str) -> list[str]:
+    return [f.rule for f in scan_text("probe.txt", sample)]
+
+
+def _check_content_rules(fixtures: dict[str, list]) -> list[str]:
+    failures: list[str] = []
+    for rule, sample in fixtures["content_positive"]:
+        if rule not in _rules_hit(sample):
+            failures.append(f"rule {rule!r} did not match its positive sample")
+    for sample in fixtures["content_negative"]:
+        hits = _rules_hit(sample)
         if hits:
-            failures.append(f"false positive on {sample!r}: {[f.rule for f in hits]}")
-
-    path_positives = [
-        ".claude/ctx/session-abc123" + ".ctx",
-        ".claude/ctx/latest-" + "gist.md",
-        ".claude/ctx/checkpoints" + ".jsonl",
-        "Claude out" + "puts/report.html",
-    ]
-    for sample in path_positives:
-        if not scan_path(sample):
-            failures.append(f"path rule missed {sample!r}")
-
-    path_negatives = [
-        ".claude/settings.json",
-        ".claude/ctx/public/decisions.jsonl",
-        "docs/install.md",
-        "harness/skills/review-convergence/SKILL.md",
-    ]
-    for sample in path_negatives:
-        if scan_path(sample):
-            failures.append(f"path rule false positive on {sample!r}")
-
+            failures.append(f"false positive on {sample!r}: {hits}")
     return failures
+
+
+def _check_path_rules(fixtures: dict[str, list]) -> list[str]:
+    expected = ([(s, True) for s in fixtures["path_positive"]]
+                + [(s, False) for s in fixtures["path_negative"]])
+    failures: list[str] = []
+    for sample, should_flag in expected:
+        if bool(scan_path(sample)) != should_flag:
+            verb = "missed" if should_flag else "false positive on"
+            failures.append(f"path rule {verb} {sample!r}")
+    return failures
+
+
+def selftest() -> list[str]:
+    """Prove every rule can fire and can stay silent; empty means it works."""
+    fixtures = _fixtures()
+    return _check_content_rules(fixtures) + _check_path_rules(fixtures)
 
 
 def _report(findings: list[Finding]) -> str:
@@ -233,13 +270,14 @@ def _report(findings: list[Finding]) -> str:
              f"across {len(by_path)} file(s):"]
     for path in sorted(by_path):
         items = by_path[path]
+        count = len(items)
         rules = sorted({f.rule for f in items})
-        lines.append(f"  {path}  ({len(items)} hit(s): {', '.join(rules)})")
+        lines.append(f"  {path}  ({count} hit(s): {', '.join(rules)})")
         for finding in items[:3]:
             where = f"line {finding.line}" if finding.line else "path"
             lines.append(f"      {where}: {finding.rule} — {finding.detail}")
-        if len(items) > 3:
-            lines.append(f"      ... and {len(items) - 3} more")
+        if count > 3:
+            lines.append(f"      ... and {count - 3} more")
     return "\n".join(lines)
 
 
