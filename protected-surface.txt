@@ -44,6 +44,14 @@ harness/structural-floor/gen_codeowners.py
 harness/ci/
 harness/selfci/gen_quality_workflow.py
 
+# Review and learning policy. These files define the author handoff,
+# independent review lenses, known-failure catalog, and process enforcement.
+.github/PULL_REQUEST_TEMPLATE.md
+harness/process/
+harness/commands/
+harness/skills/
+harness/templates/PULL_REQUEST_TEMPLATE.md.tmpl
+
 # — Agent-session machinery: the hooks that run on every session and the
 #   conventions every session follows (incl. the ctxpack memory ledger wiring).
 #   Tampering here could silently disable the receipts layer.

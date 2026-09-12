@@ -47,7 +47,9 @@ def test_init_produces_born_gated_repo():
 
         # Harness judgment layer, structural floor, and engine-pin manifest.
         for rel in (".claude/skills/design-philosophy/SKILL.md",
+                    ".claude/skills/review-convergence/SKILL.md",
                     ".claude/commands/review.md",
+                    ".claude/commands/close-review-loop.md",
                     "CLAUDE.md",
                     ".github/CODEOWNERS",
                     ".harness/manifest.json",
@@ -74,6 +76,24 @@ def test_config_workflows_parked_active_ones_live():
         assert "second-pass-reviewer.yml" in active
         assert hm.CONFIG_WORKFLOWS <= parked, f"expected {hm.CONFIG_WORKFLOWS} parked, got {parked}"
         assert not (hm.CONFIG_WORKFLOWS & active), "a config workflow shipped active"
+
+
+def test_second_pass_reviewer_uses_handoff_and_trusted_policy():
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        _init(t)
+        workflow = _read(t / hm.WORKFLOWS_DEST / "second-pass-reviewer.yml")
+        assert "pull_request_target:" in workflow
+        assert "ref: ${{ github.event.pull_request.base.sha }}" in workflow
+        assert "ref: ${{ github.event.pull_request.head.sha }}" not in workflow
+        assert "refs/pull/$PR_NUMBER/head" in workflow
+        assert "group: second-pass-${{ github.event.pull_request.number }}" in workflow
+        assert workflow.index("Fetch untrusted PR head as data") < workflow.index(
+            "ANTHROPIC_API_KEY:"
+        )
+        assert "--review-contract .claude/skills/review-convergence/SKILL.md" in workflow
+        assert '--event "$GITHUB_EVENT_PATH"' in workflow
+        assert "base-SHA policy" in workflow
 
 
 def test_no_active_workflow_carries_placeholder():

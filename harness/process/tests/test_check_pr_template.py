@@ -3,8 +3,8 @@
 The shipped workflow (harness/ci/quality.yml.tmpl, `process` job) invokes
 `python .github/scripts/check_pr_template.py` with the PR body injected via
 the PR_BODY env var. The checker enforces the contract the PR template's
-header comment promises: required sections Spec, Summary, Verification,
-Self-review must be present *and filled*, and Verification must carry at
+header comment promises: required sections Spec, Summary, Risk and invariants,
+Verification, Self-review must be present *and filled*, and Verification must carry at
 least one checked box.
 
 TDD: written before check_pr_template.py exists, so the import fails (RED).
@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from check_pr_template import (
     MIN_CONTENT_CHARS,
     REQUIRED,
+    RISK_FIELDS,
     check_body,
     heading_matches,
     main,
@@ -43,6 +44,13 @@ Implements specs/0042-pr-template-lint; satisfies acceptance criteria AC1 and AC
 - Added the PR template checker script that the CI process job invokes.
 - Wired the FILE_MAP entry so born repos receive it at .github/scripts/.
 
+## Risk and invariants
+
+- **Change risk:** medium - this changes a blocking process check
+- **Invariants:** legitimate filled PR bodies continue to pass deterministically
+- **Known-pattern sweep:** KP-RV-001 and KP-RV-002 closed by anti-cases
+- **Negative proof:** placeholder and missing-field mutations both fail
+
 ## Verification
 
 - [x] Tests added or updated (harness/process/tests/test_check_pr_template.py)
@@ -57,6 +65,8 @@ GUTTED_BODY = """\
 ## Spec
 
 ## Summary
+
+## Risk and invariants
 
 ## Verification
 
@@ -79,7 +89,7 @@ def _without_section(body: str, heading: str) -> str:
 
 
 def test_full_filled_body_passes():
-    """A realistic filled PR body (all 4 sections, one checked box) is clean."""
+    """A realistic filled PR body (all 5 sections, one checked box) is clean."""
     assert check_body(FULL_BODY) == []
     saved = os.environ.get("PR_BODY")
     os.environ["PR_BODY"] = FULL_BODY
@@ -104,7 +114,7 @@ def test_missing_required_section_fails():
 
 
 def test_gutted_body_fails():
-    """THE anti-case: all four headings present but every body empty must fail
+    """THE anti-case: all five headings present but every body empty must fail
     with one violation per empty section — a green here would be vacuous."""
     violations = check_body(GUTTED_BODY)
     assert len(violations) == len(REQUIRED), (
@@ -145,9 +155,10 @@ def test_html_comments_stripped_before_matching():
     the template's own header comment) must not count as present."""
     body = """\
 <!--
-Required sections: Spec, Summary, Verification, Self-review.
+Required sections: Spec, Summary, Risk and invariants, Verification, Self-review.
 ## Spec
 ## Summary
+## Risk and invariants
 ## Verification
 ## Self-review
 This comment alone must never satisfy the checker.
@@ -199,6 +210,73 @@ def test_verification_requires_checked_box():
     assert "Verification" in violations[0] and "check" in violations[0].lower(), violations
     checked = unchecked.replace("- [ ]", "- [x]", 1)
     assert check_body(checked) == []
+
+
+def test_risk_section_requires_all_structured_fields():
+    """A prose paragraph cannot stand in for the four review-handoff fields."""
+    body = FULL_BODY.replace(
+        "- **Negative proof:** placeholder and missing-field mutations both fail\n",
+        "The risk section has plenty of prose but omits one required field.\n",
+    )
+    violations = check_body(body)
+    assert len(violations) == 1, violations
+    assert "Risk and invariants" in violations[0], violations
+    assert "Negative proof" in violations[0], violations
+
+
+def test_risk_section_rejects_unedited_template_fields():
+    """Anti-case: the shipped field prompts must not satisfy their own guard."""
+    text = TEMPLATE_PATH.read_text(encoding="utf-8")
+    violations = check_body(text)
+    risk = [v for v in violations if "Risk and invariants" in v]
+    assert len(risk) == 1, violations
+    for field in RISK_FIELDS:
+        assert field in risk[0], f"placeholder field {field!r} was accepted: {risk}"
+
+
+def test_reasoned_na_is_valid_but_bare_na_is_not():
+    reasoned = FULL_BODY.replace(
+        "placeholder and missing-field mutations both fail",
+        "N/A - documentation only; no executable behavior changed",
+    )
+    assert check_body(reasoned) == []
+
+    bare = FULL_BODY.replace(
+        "placeholder and missing-field mutations both fail",
+        "N/A",
+    )
+    _assert_only_risk_field_violation(bare, "Negative proof")
+
+    placeholder = FULL_BODY.replace(
+        "placeholder and missing-field mutations both fail",
+        "N/A - <reason>",
+    )
+    _assert_only_risk_field_violation(placeholder, "Negative proof")
+
+
+def _assert_only_risk_field_violation(body: str, field: str) -> None:
+    violations = check_body(body)
+    assert len(violations) == 1 and field in violations[0], violations
+
+
+def test_risk_level_and_known_pattern_disposition_are_structured():
+    no_pattern = FULL_BODY.replace(
+        "KP-RV-001 and KP-RV-002 closed by anti-cases",
+        "None - no assurance or execution surface changes",
+    )
+    assert check_body(no_pattern) == []
+
+    invalid_level = FULL_BODY.replace(
+        "medium - this changes a blocking process check",
+        "unclear - this changes a blocking process check",
+    )
+    _assert_only_risk_field_violation(invalid_level, "Change risk")
+
+    bare_none = FULL_BODY.replace(
+        "KP-RV-001 and KP-RV-002 closed by anti-cases",
+        "None",
+    )
+    _assert_only_risk_field_violation(bare_none, "Known-pattern sweep")
 
 
 def test_missing_pr_body_env_is_config_error():

@@ -19,9 +19,9 @@ KP_SDLC
 
 | Subdir | Purpose | Status |
 |---|---|---|
-| `skills/` | `.claude/skills/*` for design-philosophy + coding-discipline | ✅ |
+| `skills/` | `.claude/skills/*` for design philosophy, coding discipline, and review convergence | ✅ |
 | `templates/` | `CLAUDE.md` + `AGENTS.md` + `PULL_REQUEST_TEMPLATE.md` | ✅ |
-| `commands/` | Slash commands (`/principles`, `/review`, `/entropy-check`, `/before-i-commit`) | ✅ |
+| `commands/` | Slash commands including `/review`, `/close-review-loop`, and `/before-i-commit` | ✅ |
 | `decisions/` | ADR templates including the design-philosophy ADR | ✅ |
 | `hooks/` | Pre-commit base config + `red-flag-attestation.sh` + `second_pass_reviewer.py` + `reuse_injector.py` (PreToolUse reuse check, wired via `templates/claude-settings.json.tmpl`) | ✅ |
 | `ci/` | GitHub Actions workflow templates: `quality.yml`, `web.yml`, `eval.yml`, `second-pass-reviewer.yml` | ✅ |

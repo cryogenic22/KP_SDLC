@@ -29,6 +29,17 @@ Full skill at `.claude/skills/design-philosophy/SKILL.md`. Condensed:
 
 Run the 22-item red-flag checklist in `design-philosophy/SKILL.md` before every commit.
 
+## Review convergence
+
+Before independent review, fill the PR's Risk and invariants section and run
+the `review-convergence` skill. Reviewers complete its seven-lens sweep before
+publishing consolidated findings, classify each as KNOWN, ESCAPED, NOVEL, or
+FALSE-POSITIVE, and close the review with `/close-review-loop`.
+
+The target is fewer avoidable review rounds, not a higher approval rate. Only
+reproduced findings enter the catalog, and catalog or control changes still
+require independent approval.
+
 ---
 
 ## Mechanical gates
