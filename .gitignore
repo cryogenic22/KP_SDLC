@@ -50,3 +50,6 @@ ck-report.json
 docs/internal/
 docs/deliverables/
 docs/plans/
+
+# Staged engine payload for the wheel (built by build_support/kp_build_backend.py)
+sdlc-init/sdlc_init/_payload/
