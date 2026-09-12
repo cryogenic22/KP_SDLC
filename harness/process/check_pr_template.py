@@ -2,9 +2,9 @@
 """PR template lint — the check the CI quality workflow's `process` job runs.
 
 The PR template (.github/PULL_REQUEST_TEMPLATE.md) promises in its header
-comment that four sections are required: Spec, Summary, Verification,
-Self-review. This script is what makes that promise real. The workflow
-injects the PR body via the PR_BODY env var (injection-safe: Python reads
+comment that five sections are required: Spec, Summary, Risk and invariants,
+Verification, Self-review. This script is what makes that promise real. The
+workflow injects the PR body via the PR_BODY env var (injection-safe: Python reads
 the environment, nothing is shell-interpolated) and runs:
 
     python .github/scripts/check_pr_template.py
@@ -15,6 +15,8 @@ Checks, in document order of the required sections:
   * each section has real content — after dropping blank lines, unchecked
     checkboxes, and ellipsis-only bullets, at least MIN_CONTENT_CHARS
     non-whitespace characters remain (presence, not prose quality);
+  * Risk and invariants has four filled fields: change risk, invariants,
+    known-pattern sweep, and negative proof;
   * Verification additionally carries at least one checked box `- [x]`
     (a claim of verification with nothing checked is vacuous).
 
@@ -40,7 +42,20 @@ from typing import List, Optional, Tuple
 # The exact section list the template's header comment promises. Keep as a
 # module-level tuple: the engine-side coupling test asserts every name here
 # appears as an h2 heading in PULL_REQUEST_TEMPLATE.md.tmpl.
-REQUIRED: Tuple[str, ...] = ("Spec", "Summary", "Verification", "Self-review")
+RISK_SECTION = "Risk and invariants"
+REQUIRED: Tuple[str, ...] = (
+    "Spec",
+    "Summary",
+    RISK_SECTION,
+    "Verification",
+    "Self-review",
+)
+RISK_FIELDS: Tuple[str, ...] = (
+    "Change risk",
+    "Invariants",
+    "Known-pattern sweep",
+    "Negative proof",
+)
 
 # A section is "filled" when at least this many non-whitespace characters
 # survive placeholder stripping. Deliberately a presence floor, not an NLP
@@ -56,6 +71,20 @@ _H2_RE = re.compile(r"^##\s+(.+?)\s*$")
 _CHECKED_BOX_RE = re.compile(r"^\s*[-*]\s*\[[xX]\]", re.MULTILINE)
 _UNCHECKED_BOX_RE = re.compile(r"^\s*[-*]\s*\[\s*\]")
 _ELLIPSIS_BULLET_RE = re.compile(r"^-\s*(\.\.\.|…)\s*$")
+
+
+_WHITESPACE_RE = re.compile(r"\s+")
+_BULLET_PREFIX_RE = re.compile(r"^\s*[-*]\s+")
+_RISK_LEVEL_RE = re.compile(r"^(?:low|medium|high)\s*[-:]\s*\S", re.IGNORECASE)
+_PATTERN_ID_RE = re.compile(r"\bKP-RV-\d{3}\b", re.IGNORECASE)
+_REASONED_ABSENCE_RE = re.compile(r"^(?:none|n/a)\s*[-:]\s*\S", re.IGNORECASE)
+
+_RISK_PLACEHOLDER_FRAGMENTS = (
+    "low | medium | high",
+    "list the properties",
+    "list applicable",
+    "cite the planted",
+)
 
 
 def heading_matches(heading: str, required: str) -> bool:
@@ -100,8 +129,52 @@ def _content_chars(section_text: str) -> int:
             continue
         if _ELLIPSIS_BULLET_RE.match(stripped):
             continue
-        total += len(re.sub(r"\s+", "", stripped))
+        total += len(_WHITESPACE_RE.sub("", stripped))
     return total
+
+
+def _risk_field_values(section_text: str) -> dict[str, str]:
+    """Return recognized risk-field values from Markdown bullet lines."""
+    expected = {name.lower(): name for name in RISK_FIELDS}
+    values: dict[str, str] = {}
+    for line in section_text.split("\n"):
+        item = _BULLET_PREFIX_RE.sub("", line)
+        item = item.replace("**", "").replace("__", "")
+        label, separator, value = item.partition(":")
+        canonical = expected.get(label.strip().lower())
+        if separator and canonical and canonical not in values:
+            values[canonical] = value.strip()
+    return values
+
+
+def _real_risk_value(name: str, value: str) -> bool:
+    compact = _WHITESPACE_RE.sub("", value)
+    lowered = value.lower()
+    if (
+        len(compact) < 8
+        or lowered in {"none", "n/a", "...", "tbd"}
+        or re.search(r"<[^>]+>", value)
+    ):
+        return False
+    if any(fragment in lowered for fragment in _RISK_PLACEHOLDER_FRAGMENTS):
+        return False
+    reasoned_absence = bool(_REASONED_ABSENCE_RE.match(value))
+    if name == "Change risk":
+        return bool(_RISK_LEVEL_RE.match(value))
+    if name == "Known-pattern sweep":
+        return bool(_PATTERN_ID_RE.search(value) or reasoned_absence)
+    if name == "Negative proof" and lowered.startswith(("none", "n/a")):
+        return reasoned_absence
+    return True
+
+
+def _invalid_risk_fields(section_text: str) -> List[str]:
+    values = _risk_field_values(section_text)
+    return [
+        name
+        for name in RISK_FIELDS
+        if not _real_risk_value(name, values.get(name, ""))
+    ]
 
 
 def check_body(body: str) -> List[str]:
@@ -128,6 +201,14 @@ def check_body(body: str) -> List[str]:
                 f"(needs at least {MIN_CONTENT_CHARS} characters of real content)"
             )
             continue
+        if name == RISK_SECTION:
+            invalid = _invalid_risk_fields(matched)
+            if invalid:
+                violations.append(
+                    f"section '## {name}' has missing or placeholder fields: "
+                    f"{', '.join(invalid)}"
+                )
+                continue
         if name == "Verification" and not _CHECKED_BOX_RE.search(matched):
             violations.append(
                 f"section '## {name}' has no checked box - "

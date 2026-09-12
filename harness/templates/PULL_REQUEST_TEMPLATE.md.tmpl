@@ -1,7 +1,7 @@
 <!--
 Bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}. Edit freely.
 
-Required sections: Spec, Summary, Verification, Self-review.
+Required sections: Spec, Summary, Risk and invariants, Verification, Self-review.
 The CI quality job's `process guardrails` step will fail if any are missing.
 -->
 
@@ -23,6 +23,13 @@ What did this PR take for granted that a reviewer might want to challenge? Be ho
 ## Non-goals
 
 What this PR explicitly does not do. Useful when the change is part of a larger sequence (e.g. spec slice 3 of 6).
+
+## Risk and invariants
+
+- **Change risk:** low | medium | high - explain why
+- **Invariants:** list the properties that must remain true
+- **Known-pattern sweep:** list applicable `KP-RV-*` IDs from the review-convergence skill, or `None - <reason>`
+- **Negative proof:** cite the planted failure/mutation, or `N/A - <reason>`
 
 ## Verification
 

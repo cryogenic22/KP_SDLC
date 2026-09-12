@@ -32,6 +32,10 @@ def test_contract_pins_independent_merge_and_non_vacuous_evidence():
         "exact SHA",
         "positive control",
         "planted failing case",
+        "fewer avoidable review rounds",
+        "Reproduce a novel issue",
+        "earliest-prevention action",
+        "/close-review-loop",
         "CtxPack ledger recall",
     )
     missing = [phrase for phrase in required if phrase not in contract]
@@ -43,3 +47,20 @@ def test_both_agent_instruction_files_are_protected():
     stripped = (line.strip() for line in surface.splitlines())
     entries = {line for line in stripped if line and not line.startswith("#")}
     assert {"AGENTS.md", "CLAUDE.md"} <= entries
+
+
+def test_review_learning_policy_is_protected():
+    surface = (ROOT / "protected-surface.txt").read_text(encoding="utf-8")
+    entries = {
+        line.strip()
+        for line in surface.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    required = {
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        "harness/process/",
+        "harness/commands/",
+        "harness/skills/",
+        "harness/templates/PULL_REQUEST_TEMPLATE.md.tmpl",
+    }
+    assert required <= entries, f"review policy lost protected paths: {required - entries}"

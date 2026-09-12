@@ -32,6 +32,17 @@ Run the 22-item red-flag checklist (in `design-philosophy/SKILL.md`) before ever
 
 The pre-commit hook `red-flag-attestation` will prompt for this. The CI `second-pass-reviewer` job runs the checklist independently against the diff.
 
+## Review convergence
+
+Before independent review, fill the PR's Risk and invariants section and run
+`.claude/skills/review-convergence/SKILL.md`. Reviewers complete its seven-lens
+sweep before publishing consolidated findings, classify each as KNOWN,
+ESCAPED, NOVEL, or FALSE-POSITIVE, and close with `/close-review-loop`.
+
+The target is fewer avoidable review rounds, not a higher approval rate. Only
+reproduced findings enter the catalog, and catalog or control changes still
+require independent approval.
+
 ---
 
 ## Mechanical gates (already in pipeline)
@@ -66,6 +77,7 @@ make sarif            # SARIF for GitHub Code Scanning
 
 - `/principles` — print Tier 0 + Tier 1 reminder
 - `/review` — run Tier 2 red-flag checklist on the current diff
+- `/close-review-loop` - classify findings and capture harness learning
 - `/entropy-check` — explicit broken-window scan
 - `/before-i-commit` — full pre-commit attestation walkthrough
 

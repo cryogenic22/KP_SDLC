@@ -1,34 +1,47 @@
-# Second-pass reviewer — fresh-context Claude review against design-philosophy.
+# Second-pass reviewer - advisory fresh-context convergence review.
 # Bootstrapped from kp-sdlc/harness on {{BOOTSTRAP_DATE}}.
 #
-# Independent review: a separate Claude session sees only the PR diff and the
-# 22-flag Tier 2 checklist. No prior context, no chat history. Catches what
-# the first-pass agent's drift missed.
+# Advisory independent review: a separate Claude session sees the PR handoff,
+# diff, and trusted base-SHA review policies. No prior chat history. The output
+# can find candidates but cannot approve or merge a PR.
 #
 # Required secret: ANTHROPIC_API_KEY (workflow auto-skips if absent).
 # Cost: ~$0.05–0.20 per PR depending on diff size.
 name: second-pass-reviewer
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: second-pass-${{ github.ref }}
+  group: second-pass-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   review:
-    name: Fresh-context review against design-philosophy
+    name: Fresh-context convergence review
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          # pull_request_target runs the base workflow. Keep the checkout on
+          # that trusted base; the PR head is fetched only as Git object data.
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
+
+      - name: Fetch untrusted PR head as data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin \
+            "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/$PR_NUMBER/head"
+          git cat-file -e "$HEAD_SHA^{commit}"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -50,6 +63,8 @@ jobs:
             --base "${{ github.event.pull_request.base.sha }}" \
             --head "${{ github.event.pull_request.head.sha }}" \
             --principles .claude/skills/design-philosophy/SKILL.md \
+            --review-contract .claude/skills/review-convergence/SKILL.md \
+            --event "$GITHUB_EVENT_PATH" \
             > review.md
           echo "review_exists=true" >> "$GITHUB_ENV"
 
@@ -63,7 +78,7 @@ jobs:
             const body = [
               '## Second-pass review',
               '',
-              '_Independent fresh-context Claude review — no prior context on this PR or codebase. Reviews against `.claude/skills/design-philosophy/SKILL.md` Tier 2 (22 red flags)._',
+              '_Advisory fresh-context review using base-SHA policy, the PR handoff, and the immutable diff. This output is evidence, not merge approval._',
               '',
               review,
               '',
