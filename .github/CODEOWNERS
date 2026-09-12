@@ -15,6 +15,8 @@ harness/structural-floor/gen_codeowners.py @cryogenic22
 .github/workflows/ @cryogenic22
 harness/ci/ @cryogenic22
 harness/selfci/gen_quality_workflow.py @cryogenic22
+harness/selfci/release_privacy.py @cryogenic22
+.gitignore @cryogenic22
 .claude/settings.json @cryogenic22
 AGENTS.md @cryogenic22
 CLAUDE.md @cryogenic22
