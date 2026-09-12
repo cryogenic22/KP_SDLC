@@ -278,8 +278,18 @@ def write_manifest(ctx: InitContext) -> PhaseResult:
     manifest = build_repo_manifest(ctx.manifest, ctx.as_of, [r.as_dict() for r in ctx.results],
                                    vendor_hashes=ctx.vendor_hashes)
     dest = write_repo_manifest(ctx.target, manifest)
-    sha = manifest["engine"]["sha"]
-    if sha == "unknown":
+    engine = manifest["engine"]
+    sha = engine["sha"]
+    provenance = engine.get("provenance", {})
+    if provenance.get("kind") == "package":
+        # A released artifact has no commit of its own, so `sha` is null by
+        # design rather than unresolved. It is pinned by version + payload
+        # digest instead, and saying "unknown" here would read as a failure.
+        digest = str(provenance.get("payload_digest", ""))
+        detail = (f"engine pinned @ kp-sdlc "
+                  f"{provenance.get('package_version', 'unknown')} "
+                  f"payload {digest.removeprefix('sha256:')[:8]}")
+    elif sha == "unknown" or sha is None:
         ctx.log("  [warn] engine SHA could not be resolved (engine_root is not a "
                 "git checkout) — the repo is NOT pinned to a specific engine commit.")
         detail = "engine SHA unknown — not pinned"
