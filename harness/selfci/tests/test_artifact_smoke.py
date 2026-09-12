@@ -74,6 +74,39 @@ def test_engines_exclude_the_staged_payload(config):
         "of every harness file")
 
 
+@pytest.mark.parametrize("polluted", [
+    "build/lib/qg/context.py",
+    "dist/whatever.py",
+    "kp_sdlc.egg-info/PKG-INFO",
+])
+def test_top_level_build_output_is_actually_excluded(polluted):
+    """`**/build/**` does not match a *top-level* `build/`.
+
+    The `**/` prefix requires at least one leading directory, so `build/lib/x.py`
+    slipped through every `**/build/**` entry both engines carried. It stayed
+    invisible while pip built out-of-tree; declaring `backend-path` makes pip
+    build in place, `build/lib/` lands in the source tree, and CK jumped from 132
+    findings to 316 and exited 1.
+
+    Asserted against CK's real matcher rather than by reading the config, because
+    the config already *looked* correct.
+    """
+    import json
+    import sys as _sys
+
+    _sys.path.insert(0, str(_ROOT / "cathedral-keeper"))
+    try:
+        from cathedral_keeper.path_glob import matches_any
+    finally:
+        _sys.path.pop(0)
+
+    config = _ROOT / "cathedral-keeper" / "cathedral-keeper.config.json"
+    excludes = json.loads(config.read_text(encoding="utf-8"))["paths"]["exclude"]
+    assert matches_any(polluted, excludes), (
+        f"{polluted!r} is build output but survives the exclude list — an "
+        "in-place `pip install .` would put it in front of the engines")
+
+
 @pytest.fixture(scope="module")
 def installed(smoke, tmp_path_factory):
     """One wheel, one venv, shared by the checks below.

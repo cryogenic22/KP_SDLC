@@ -20,7 +20,11 @@
       "**/venv/**",
       "**/venv*/**",
       "**/site-packages/**",
-      "**/.quality-reports/**"
+      "**/.quality-reports/**",
+      "build/**",
+      "dist/**",
+      "*.egg-info/**",
+      "**/*.egg-info/**"
     ]
   },
   "integrations": {

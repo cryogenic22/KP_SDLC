@@ -26,7 +26,11 @@
       "**/venv*/**",
       "**/site-packages/**",
       "**/.quality-reports/**",
-      "**/coverage/**"
+      "**/coverage/**",
+      "build/**",
+      "dist/**",
+      "*.egg-info/**",
+      "**/*.egg-info/**"
     ]
   },
   "prs": {
