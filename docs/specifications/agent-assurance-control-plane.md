@@ -1,11 +1,11 @@
 # Agent Assurance Control Plane
 
-**Status:** Proposed for owner ratification (revision 6)  
-**Version:** 0.6  
+**Status:** Proposed for owner ratification (revision 7)  
+**Version:** 0.7  
 **Date:** 2026-09-12  
-**Supersedes:** v0.1 (2026-09-06), v0.2, v0.3, v0.4 and v0.5. Revised against
-five rounds of independent review; §21 records the disposition of every finding
-from all five.  
+**Supersedes:** v0.1 (2026-09-06), v0.2, v0.3, v0.4, v0.5 and v0.6. Revised
+against six rounds of independent review; §21 records the disposition of every
+finding from all six.  
 **Working name:** Keel  
 **Repository:** KP_SDLC  
 
@@ -160,8 +160,12 @@ assessment and content digests, never a second copy of the memory ledger.
 
 ## 6. Canonical contracts
 
-All contracts are versioned, reject unknown required semantics, tolerate unknown
-optional extension fields, and have positive and negative fixtures.
+All contracts are versioned, reject unknown required semantics, carry vendor
+extensions only through the bounded `extensions` object of §6.3.1, and have
+positive and negative fixtures. "Tolerate unknown optional fields" is *not* the
+rule: an unknown field outside `extensions` is a schema defect and derives
+`INCONCLUSIVE`. §6.3.1 states the one extension boundary both properties live
+on.
 
 ### 6.1 `sdlc/event@1`
 
@@ -306,6 +310,7 @@ coverage:
 outcome: pass | fail | unavailable | inconclusive
 findings: []
 references: []
+extensions: {}              # optional; bound but semantically inert (§6.3.1)
 ```
 
 Rules:
@@ -465,17 +470,21 @@ Verdict precedence is:
 VOID > BLOCKED > INCONCLUSIVE > SKIPPED_NAMED > PASS_WITH_DEBT > PASS
 ```
 
-Lifecycle and modifiers are separate from verdicts. Initial lifecycle values are
-`DRAFTED`, `ACTIVE`, `HELD`, `EXPIRED`, `SUPERSEDED`; modifiers include
-`PROVISIONAL`, `EXPIRING`, `DRIFT`, `WAIVED`, `NO_APPROVER`, `UNSIGNED` and
-`CONTENDED`.
+Lifecycle and modifiers are separate from verdicts, and they are separate from
+each other in how they are held. Modifiers — `PROVISIONAL`, `EXPIRING`, `DRIFT`,
+`WAIVED`, `NO_APPROVER`, `UNSIGNED`, `CONTENDED` — are derived at evaluation and
+bound into the payload. Lifecycle — `DRAFTED`, `ACTIVE`, `HELD`, `EXPIRED`,
+`SUPERSEDED` — is **not stored on the decision at all**; it is folded at use time
+from the bound decision plus an append-only transition chain. §6.3.4 says why and
+how.
 
 A decision includes `content_digest` — sha256 over its own canonical payload,
 excluded from the bytes it digests — plus the subject digest, policy digest,
 config digests, the referenced **`evidence_digest`s**, derived verdict, reason
-codes, uninspected surfaces, owner, the `evaluation` block (§6.3.2) together
-with any `claimed_source` or `claimed_skew_bound_s` a request supplied, the
-expiry window, and its generation time. Which of these sit inside the digested
+codes, uninspected surfaces, owner, the `evaluation` block (§6.3.2) with the
+`evaluator` block the time authority was derived from, any `claimed_source` or
+`claimed_skew_bound_s` a request supplied, the freshness window and decision TTL,
+and its generation time. Which of these sit inside the digested
 payload and which are occurrence-only is settled by the tables in §6.3.1, not by
 the order of this sentence. No agent-authored boolean such as `approved: true`
 is accepted as a decision.
@@ -504,7 +513,7 @@ of them decisive. The correct test is semantic:
 > **occurrence-only**. Varying between runs is not a reason to exclude a field
 > from the digest; it is a reason to stop requiring those runs to share one.
 
-Two conformance requirements follow, and both are testable:
+Three conformance requirements follow, and all three are testable:
 
 - Every field of both schemas carries a declared class. A field present in a
   document with no declared class is a schema defect and the document derives
@@ -514,6 +523,37 @@ Two conformance requirements follow, and both are testable:
 - A field that any rule later reads to reach a verdict moves into the bound set
   in the same change that introduces the rule. The tables below are normative
   and are the only place the partition is stated.
+- Extensions live in exactly one place, so forward compatibility and
+  fail-closed classification stop contradicting each other. §6 previously said
+  unknown optional fields are tolerated while this section said an unclassified
+  field derives `INCONCLUSIVE`; no implementation can satisfy both. **The
+  extension boundary** below is the single rule.
+
+##### The extension boundary
+
+Each document carries at most one `extensions` object, and that object is the
+only place an undeclared name may appear.
+
+- An unknown field **outside** `extensions` — at the top level or nested inside
+  a declared block — is a schema defect and the document derives
+  `INCONCLUSIVE`. Unknown means unknown: the engine does not guess that it is
+  harmless.
+- The `extensions` subtree carries **one declared class for the whole object:
+  bound**. It is digested, so adding or editing an extension changes the
+  document's digest — correctly, because it is different content, and a reader
+  can tell that something was added.
+- The subtree is nonetheless **semantically inert**. No rule may read a value
+  inside `extensions` to reach a verdict, and a policy that references a path
+  under `extensions` is itself a policy defect deriving `INCONCLUSIVE` with a
+  policy-defect reason code. Binding it proves what was carried; inertness
+  stops it becoming an unreviewed input.
+- Promoting an extension into the bound model takes a schema version bump plus
+  a row in the tables below, in one change. There is no path by which a field
+  becomes load-bearing without appearing in this section.
+
+The pair of properties this preserves is worth stating plainly: a producer may
+ship data the engine does not understand, and the engine will never let data it
+does not understand change a verdict.
 
 ##### The two evidence digests
 
@@ -570,6 +610,7 @@ byte for byte.
 | `coverage.*` | bound | uninspected surfaces are charged to the verdict |
 | `outcome`, `findings` | bound | the result itself |
 | `references` | bound | no rule reads them, but an auditor follows them, and nothing is gained by leaving the links a decision was built on mutable |
+| `extensions` | bound, semantically inert | the one place an undeclared name may appear; digested but unreadable by any rule |
 | `execution.started_at`, `recorded_at`, `latency_ms` | occurrence-only | no rule reads them. A latency *budget* is not an exception: §6.2.1 requires any quantity compared against a threshold to appear in `measurements`, which is bound |
 | `execution.workflow_id`, `workflow_run_id` | occurrence-only | audit context; the same-effect test uses `idempotency_key` and `step_id` |
 | emitting process identity | occurrence-only | recorded for audit; the evaluator's own context is derived, not read from the record (§6.3.2) |
@@ -586,12 +627,14 @@ byte for byte.
 | derived verdict, reason codes (sorted), uninspected surfaces | bound | the decision |
 | derived independence level and its caps | bound | eligibility |
 | `owner` | bound | who the decision is charged to |
-| freshness and expiry *policy window* | bound | the absolute expiry instant is derived from this window and `as_of`, so it is not stored separately |
+| freshness *policy window*, and the decision TTL when the policy sets one | bound | the absolute expiry instant is derived from these and the referenced evidence, never stored — the formula is in §6.3.4 |
 | `evaluation.*` (§6.3.2) | bound | the semantic time input |
 | `claimed_source`, `claimed_skew_bound_s` | bound | recorded claims; a claim disagreeing with the derivation is a named finding |
 | modifiers derived at evaluation (`CONTENDED`, `WAIVED`, `NO_APPROVER`, `UNSIGNED`, `DRIFT`, `PROVISIONAL`, `EXPIRING`) | bound | they change whether the decision gates |
-| lifecycle (`DRAFTED`, `ACTIVE`, `HELD`, `EXPIRED`, `SUPERSEDED`) | **outside the payload** | mutable state recorded beside the decision. Superseding a decision must not alter the bytes it was verified under |
-| generation time, emitting process identity, request ID | occurrence-only | what happened when it was produced |
+| `evaluator.execution_identity` and `evaluator.authority_proof` | bound | the derivation inputs behind `evaluation.source` (§6.3.2). Binding the derived word without the proof it came from would bind a conclusion and discard its premise |
+| lifecycle | **not a field at all** | there is no stored lifecycle value to edit. It is folded at use time from the bound decision plus the append-only transition chain of §6.3.4 |
+| `extensions` | bound, semantically inert | as in the evidence table |
+| generation time, emitting process identity, request ID | occurrence-only | what happened when it was produced. Note this is the *emitting* process — distinct from `evaluator.execution_identity` above, which is the context the time authority was derived from and is bound |
 
 ##### Counterexample matrix
 
@@ -684,6 +727,50 @@ therefore **inside the canonical payload**: moving `as_of` by one second changes
 the payload, changes `content_digest`, and fails verification. Backdating stops
 being undetectable and becomes a different decision.
 
+##### The derivation's premises are bound, not just its conclusion
+
+A derived word is only as good as the record of what it was derived from.
+Binding `source: protected_runner_clock` into the payload while leaving the
+evaluator's identity out of it binds a conclusion and discards its premise: a
+later reader sees the claim and has nothing to check it against, and
+`sdlc verify` cannot re-derive it because the execution context is gone
+(§6.3.3). So the decision payload carries, and binds, the context the
+derivation consumed:
+
+```yaml
+evaluator:
+  execution_identity:        # where the evaluation itself ran
+    runner: local | self_hosted_ci | protected_ci | isolated
+    actor_can_mutate_config: boolean
+    oidc_issuer: optional
+    oidc_subject: optional
+  authority_proof:           # required when source is protected_runner_clock
+    kind: runner_attestation | oidc_token_claim
+    digest: digest of the proof artifact
+    bound_to: the execution_identity subject the proof attests
+```
+
+This is the evidence contract's `observer.execution_identity` applied to the
+evaluator rather than the producer, and it sits beside `evaluation` for the same
+reason §7 keeps `independence.inputs` beside the derived level. It is distinct
+from the *emitting process identity*, which stays occurrence-only: the emitter is
+audit context, the evaluator is a premise.
+
+##### `protected_runner_clock` is reserved until an adapter can prove it
+
+No adapter in ACP-0 produces a runner attestation or an OIDC clock claim, so
+nothing can populate `authority_proof` honestly. Rather than ship a word whose
+premise no component can supply — the exact shape of the defect §7 exists to
+prevent — **`protected_runner_clock` is reserved and is not derivable in
+ACP-0.** A document presenting it derives `INCONCLUSIVE` with an
+unsupported-authority reason code until the attestation adapter lands at ACP-4.
+
+ACP-0's only promoting source is therefore `engine_clock`, which is honest about
+what it is (below) and which §7 already caps: level 2 locally, and no higher than
+rule 4 allows in protected CI. Nothing about promotion is blocked by the
+reservation; what is blocked is claiming a stronger provenance than any component
+can currently demonstrate.
+
 ##### Binding is not enough: the block is derived, not accepted
 
 Putting a field inside a digest proves only that its text was not altered after
@@ -716,7 +803,7 @@ Each `source` value is derivable only under one condition:
   verifies as `protected_ci` or `isolated` with a verified `oidc_issuer` and
   `oidc_subject`, and the instant is attested by *that* runner. The clock proof
   is bound to the runner identity; an unverified or unbound claim is not this
-  value.
+  value. **Reserved, and not derivable in ACP-0** — see below.
 - **`engine_clock`** — the engine itself read the clock in-process during this
   evaluation.
 - **`recorded_replay`** — the instant was read from a recorded payload being
@@ -787,14 +874,23 @@ reads a clock, never re-runs an adapter and never emits a decision. Its outcomes
 are `verified`, `digest_mismatch` or `inputs_unavailable`, and a recorded
 decision that does not verify is `INCONCLUSIVE` for any onward use.
 
-What verification proves is bounded, and the boundary is worth stating so it is
-not over-read. `verified` means *this decision's payload is exactly what these
-recorded inputs produce*. It does not re-run the derivations of §6.3.2: it does
-not re-resolve `skew_bound_s` against the policy, and it cannot re-derive
-`source`, because the execution context that derived it no longer exists. Those
-are decision-time controls and verification is not a substitute for them. The
-division is deliberate — derivation establishes that a claim was true when it
-was made, verification establishes that nothing has moved since.
+**`sdlc verify` proves self-consistency only.** The boundary is worth stating
+flatly so the word is not over-read. `verified` means *this decision's payload is
+exactly what these recorded inputs produce*. It does not re-run the derivations
+of §6.3.2: it does not re-resolve `skew_bound_s` against the policy, and it
+cannot re-derive `source`, because the execution context that derived it no
+longer exists. Those are decision-time controls and verification is not a
+substitute for them. The division is deliberate — derivation establishes that a
+claim was true when it was made, verification establishes that nothing has moved
+since.
+
+It follows that `verified` is necessary but never sufficient for onward use.
+**Promotion on a recorded decision requires all three:** it verifies; its bound
+provenance — `evaluator.execution_identity`, `evaluator.authority_proof` and the
+derived independence level — still satisfies the policy in force at use time; and
+its effective lifecycle, folded per §6.3.4, is neither held, superseded nor
+expired. A decision that verifies and fails either of the others is
+`INCONCLUSIVE` for promotion, and the reason names which of the three failed.
 
 **Re-evaluation is a decision.** Deciding again over the same evidence — under
 `mode: replay`, `historical` or `test` — produces a new decision with its own
@@ -807,6 +903,107 @@ computed honestly from these inputs?* Re-evaluation asks *what would we decide
 about this evidence now, or under these stated conditions?* Only the first is an
 equality claim; only the second produces a new record. Step replay (§6.2.2) is a
 third thing again, at the evidence layer, and never refreshes freshness.
+
+#### 6.3.4 Lifecycle, expiry and the transition record
+
+v0.6 put lifecycle "outside the payload as mutable state". That is a hole of
+exactly the kind §6.3.2 was written to close, one layer up: `HELD`, `EXPIRED` and
+`SUPERSEDED` decide whether a decision may still be used, so editing any of them
+to `ACTIVE` changes onward eligibility while `content_digest` keeps verifying. It
+also contradicted the rule that `HELD + NO_APPROVER` never auto-clears. The fix
+is not to bind a mutable field — a bound field cannot change, and lifecycle
+genuinely must — but to stop storing lifecycle as a value anyone can write.
+
+**There is no lifecycle field.** Effective lifecycle is *folded* at use time from
+two immutable sources: the bound decision, and an append-only chain of
+transitions. Nothing in either can be edited in place without breaking a digest.
+
+##### What is derived versus what is an event
+
+`EXPIRED` is **derived, never recorded**. It is a function of bound inputs and a
+trusted current instant obtained under the same §6.3.2 rules that govern
+`evaluation.as_of`. There is no expiry flag to flip, so there is nothing to
+forge.
+
+`HELD` and `SUPERSEDED` are genuine **events** — a person holds a decision, a
+later decision supersedes it — and cannot be derived from the decision alone.
+They are recorded as transitions, never as a field.
+
+`DRAFTED` and `ACTIVE` are the absence of a terminal transition: a decision with
+no transition beyond its creation, and not derived-expired, is `ACTIVE`.
+
+##### The expiry formula, stated
+
+The reviewer is right that `as_of + window` is the wrong horizon: it would grant a
+nearly stale result a fresh full window, laundering age through the act of
+deciding. Freshness belongs to the evidence, and it is anchored to when the
+evidence finished:
+
+```text
+evidence_horizon  = min over referenced evidence i of
+                        ( finished_at_i + freshness_window_i )
+
+decision_horizon  = as_of + decision_ttl          # only if policy sets a TTL
+
+effective_expiry  = min( evidence_horizon, decision_horizon )
+```
+
+`freshness_window` is a property of the evidence surface in the bound policy;
+`decision_ttl` is a separate, separately named policy value that exists only when
+a policy sets one, and it can only ever shorten the horizon. A decision is
+derived-expired when the trusted current instant exceeds `effective_expiry`.
+Deciding again over the same evidence does not extend `evidence_horizon` — it
+cannot, because `finished_at` is bound.
+
+##### `sdlc/decision-transition@1`
+
+Each transition is its own immutable document with its own canonical payload and
+`content_digest`, computed under §6.3.1's rules:
+
+```yaml
+schema: sdlc/decision-transition@1
+decision_digest: content_digest of the decision this transitions
+prev_transition_digest: content_digest of the previous transition, or null
+                        for the first
+to_state: HELD | RELEASED | SUPERSEDED
+superseded_by: decision content_digest, required for and only for SUPERSEDED
+actor_identity: id, kind and verification word, as in §6.2
+reason_code: why
+at: RFC3339 instant, derived under the §6.3.2 rules
+```
+
+The chain rules are the ones that make it fail closed:
+
+- **Append-only by hash chain.** Each transition names its predecessor's digest,
+  so removing or reordering an entry breaks the chain at the next link. There is
+  no in-place edit that leaves the chain intact.
+- **Folding is total, or the decision is unusable.** The engine walks from the
+  decision to the chain head. A chain that does not resolve — a missing link, a
+  digest that does not recompute, a transition naming a decision digest other
+  than this one, or two entries claiming the same predecessor — derives
+  `INCONCLUSIVE` for onward use with a chain reason code. It never falls back to
+  "treat it as `ACTIVE`".
+- **`HELD` clears only by an explicit `RELEASED` transition** carrying an actor
+  identity that satisfies the policy's approver rule. It never auto-clears, and
+  `NO_APPROVER` cannot be resolved by the passage of time. Recording
+  `to_state: RELEASED` without a qualifying actor is a transition that does not
+  fold — the decision stays held.
+- **`SUPERSEDED` is terminal**, and `superseded_by` must name a decision that
+  itself verifies and folds to `ACTIVE`; otherwise superseding would be a way to
+  retire a blocking decision by pointing at nothing.
+- Transitions carry no verdict and cannot create one. A held or superseded
+  decision is not re-decided by its chain; it is made unusable by it.
+
+##### Why this closes the hole
+
+Flipping a stored word no longer does anything, because no such word is read.
+`EXPIRED` is recomputed from bound evidence and a derived instant. `HELD` and
+`SUPERSEDED` are reached only through a chained document whose own digest must
+recompute and whose predecessor must resolve. An attacker who rewrites a
+transition to `RELEASED`, or deletes one, and then recomputes every ordinary hash
+still has to produce a chain that folds — and the fold checks predecessor
+linkage and approver eligibility, neither of which a recomputed digest supplies.
+§15.1 plants exactly that attempt.
 
 ### 6.4 `sdlc/lane-profile@1`
 
@@ -1186,7 +1383,9 @@ Every work package includes:
 6. deterministic verdict derivation, and verification replay (§6.3.3) over a
    recorded decision;
 7. exact subject/config/policy digest binding, plus a conformance test that
-   every schema field's declared class matches the tables of §6.3.1;
+   every schema field's declared class matches the tables of §6.3.1, and paired
+   compatibility fixtures for the extension boundary — vendor content inside
+   `extensions` tolerated and inert, an undeclared field outside it refused;
 8. a test that an agent/self-reported identity cannot satisfy an independent
    gate, and that a self-reported time authority cannot satisfy a promotion;
 9. targeted component tests, then the full blocking CI suite;
@@ -1194,18 +1393,20 @@ Every work package includes:
 
 ### 15.1 Planted-negative matrix
 
-Every adapter and every gate is tested against all ten planted conditions, and
-each must derive the stated verdict. A test suite that omits a row does not
+Every adapter and every gate is tested against all thirteen planted conditions,
+and each must derive the stated verdict. A test suite that omits a row does not
 qualify the component for an enforcement claim.
 
-The last three rows share a rule that makes them harder than they look: **the
-attacker is allowed to recompute every digest.** Each of those fixtures is
-internally consistent — `result_digest`, `evidence_digest` and `content_digest`
+Six rows share a rule that makes them harder than they look: **the attacker is
+allowed to recompute every digest.** In `mutated occurrence fact`, `forged time
+authority`, `inflated skew bound`, `stripped authority proof`, `rewritten
+lifecycle` and `smuggled unknown field`, each fixture is internally consistent —
+`result_digest`, `evidence_digest`, `content_digest` and any transition digest
 all recompute correctly over the tampered content. A test that passes only
 because a digest failed to match has not exercised the control; the engine must
-refuse because the claim cannot be *derived* or *resolved*, not because the
-bytes disagree. The `tampered record` row above them is the opposite case and is
-kept deliberately: there, the digest mismatch itself is the control under test.
+refuse because the claim cannot be *derived*, *resolved* or *folded*, not because
+the bytes disagree. The `tampered record` row is the deliberate opposite case:
+there, the digest mismatch itself is the control under test.
 
 | Planted condition | Fixture | Required verdict | Must never derive |
 |---|---|---|---|
@@ -1219,17 +1420,26 @@ kept deliberately: there, the digest mismatch itself is the control under test.
 | Mutated occurrence fact | four fixtures, each preserving the tool result byte for byte so `result_digest` is unchanged, while mutating one of `finished_at`, `status`, `idempotency_key`, or retry/replay lineage; all digests recomputed | `INCONCLUSIVE` — the decision that referenced the original `evidence_digest` no longer resolves, and a promotion rebuilt on the mutated record fails its own checks | `PASS` on the strength of an unchanged `result_digest` |
 | Forged time authority | a request and a stored decision asserting `source: engine_clock` or `protected_runner_clock`, evaluated outside that execution context, with every digest recomputed consistently | `INCONCLUSIVE` with an underivable-source reason code; the assertion is recorded as `claimed_source` | `PASS`, or derivation of any source above `caller_override` |
 | Inflated skew bound | `skew_bound_s` in the payload exceeding the value the payload's own policy digest resolves to, with every digest recomputed | `INCONCLUSIVE` with a policy-mismatch reason code | `PASS`, evaluation against the inflated tolerance |
+| Stripped authority proof | `evaluation.source` preserved verbatim while `evaluator.authority_proof` is removed, or substituted with a proof bound to a different runner subject; and a decision presenting the ACP-0-reserved `protected_runner_clock`; all digests recomputed | `INCONCLUSIVE` with an unsupported- or unbound-authority reason code | `PASS` on the strength of the source word alone |
+| Rewritten lifecycle | three fixtures: a `HELD` chain with the transition rewritten to `RELEASED` without a qualifying approver; an `EXPIRED` decision presented for promotion past its `effective_expiry`; and a `SUPERSEDED` chain with the terminal transition deleted — every remaining digest recomputed | `INCONCLUSIVE` with a lifecycle or chain reason code | `PASS`, `ACTIVE` as a fallback when the chain does not fold, any auto-clear of `HELD`/`NO_APPROVER` |
+| Smuggled unknown field | an undeclared field outside `extensions`, and a policy referencing a path *inside* `extensions` | `INCONCLUSIVE` with a schema-defect or policy-defect reason code | `PASS`, silent tolerance of the unknown field, any verdict influenced by an `extensions` value |
 
-Four properties are asserted alongside the matrix. A malformed artifact never
+Six properties are asserted alongside the matrix. A malformed artifact never
 crashes the run — it is counted and surfaced. The planted failing fixture is
 caught with a non-zero execution count, so the negative test is itself
 non-vacuous. Altering a recorded `evaluation.as_of` by any amount changes the
 payload digest and fails verification, which is asserted directly rather than
 inferred from the field's position in the schema: the backdating test moves the
-instant, recomputes, and requires both the digest mismatch and the refusal. And
-the last three rows are asserted to fail on **derivation or resolution**, not on
-digest comparison — each test proves the document verified cleanly and was
-refused anyway.
+instant, recomputes, and requires both the digest mismatch and the refusal. The
+six derivation rows are asserted to fail on **derivation, resolution or chain
+folding**, not on digest comparison — each test proves the document verified
+cleanly and was refused anyway. A **positive** compatibility fixture pairs the
+`smuggled unknown field` row: a document carrying `extensions` with vendor
+content parses, derives the same verdict as the same document without it, and
+produces a *different* digest — so the extension boundary is shown to be both
+tolerant and inert, not merely refused. And `sdlc verify` returning `verified` is
+asserted **not** to be sufficient: a fixture that verifies cleanly but is held,
+superseded, expired or missing its authority proof must still refuse promotion.
 
 For adapter proof-of-fire, CI must run both the clean and planted fixtures. A
 test that merely inspects source text is insufficient for an enforcement claim.
@@ -1302,14 +1512,21 @@ before the pilot in §18 succeeds.
 **Deliverables:**
 
 - `sdlc/evidence@1` and `sdlc/decision@1` schemas, including typed measurement
-  (§6.2.1), durable execution identity (§6.2.2), the per-field classification
-  and two evidence digests (§6.3.1) and derived independence (§7), with positive
-  and negative fixtures;
+  (§6.2.1), durable execution identity (§6.2.2), the per-field classification,
+  two evidence digests and the extension boundary (§6.3.1) and derived
+  independence (§7), with positive and negative fixtures;
+- `sdlc/decision-transition@1` plus the lifecycle **fold** and the
+  `effective_expiry` computation (§6.3.4), with chain fixtures. The fold is a
+  function and a schema, not a subsystem: ACP-0 ships **no command that creates a
+  transition**, because nothing in a one-repository, one-commit pilot holds or
+  supersedes anything. What it ships is the inability to forge one;
 - the independence derivation rule set as engine code with its own unit tests;
 - the evaluation-context derivation (§6.3.2) in the same rule-set style: the
   engine derives `source`, `as_of`, `mode` and `skew_bound_s`, demotes any
-  supplied value to a `claimed_*` field, and resolves `skew_bound_s` from the
-  bound policy digest;
+  supplied value to a `claimed_*` field, resolves `skew_bound_s` from the bound
+  policy digest, and binds the `evaluator` block the derivation consumed.
+  `protected_runner_clock` is reserved and derives `INCONCLUSIVE`; `engine_clock`
+  is ACP-0's only promoting source;
 - evidence adapters for Quality Gate and Cathedral Keeper only;
 - `sdlc check` and `sdlc explain`, producing a deterministic decision bound to
   one repository at one full commit SHA;
@@ -1330,7 +1547,9 @@ byte-identical canonical decision payload and `content_digest` (§6.3.1), with
 differences confined to occurrence-only fields; re-running an adapter over an
 unchanged tree yields the same `result_digest` and a different
 `evidence_digest`; `sdlc verify` returns `verified` for a recorded decision and
-`digest_mismatch` once any bound field is mutated; QG and CK artifacts are
+`digest_mismatch` once any bound field is mutated, and a decision that verifies
+but is held, superseded, derived-expired or missing its authority proof still
+refuses promotion; QG and CK artifacts are
 represented without losing details a reviewer needs; every row of the
 planted-negative matrix derives its required verdict, with the derivation rows
 proven to refuse a fully self-consistent document; `sdlc explain` reproduces the
@@ -1519,31 +1738,49 @@ Done when all of the following hold:
    referenced evidence record — including one that leaves `result_digest`
    unchanged — makes the same command return `digest_mismatch`, and the mutated
    record cannot support a promotion (§6.3.3).
-6. Every row of the planted-negative matrix (§15.1) derives its required
+6. **`verified` is not sufficient.** A decision that verifies cleanly but is
+   held, superseded, derived-expired, or missing the `evaluator.authority_proof`
+   its `evaluation.source` requires still refuses promotion, and the reason names
+   which of the three conditions failed (§6.3.3).
+7. **Lifecycle folds; it is never read as a field.** No decision stores a
+   lifecycle value. `EXPIRED` is recomputed from `effective_expiry` (§6.3.4) and
+   a derived instant; `HELD` and `SUPERSEDED` are reached only through a
+   `sdlc/decision-transition@1` chain whose digests recompute and whose
+   predecessor links resolve. A chain that does not fold derives `INCONCLUSIVE`,
+   never a fallback to `ACTIVE`, and `HELD + NO_APPROVER` never auto-clears.
+8. **The expiry formula is the evidence's, not the decision's.** A test pins two
+   decisions over one evidence set at different `as_of` values and asserts both
+   share the same `evidence_horizon` — deciding again does not extend freshness.
+9. Every row of the planted-negative matrix (§15.1) derives its required
    verdict: missing, malformed, zero-execution, stale, inadmissible-observer,
    backdated evaluation, tampered record, mutated occurrence fact, forged time
-   authority and inflated skew bound. In particular a QG result reporting
-   `passed: true` with `executed_count: 0` derives `VOID`, and the last three
-   rows are proven to fail on derivation or resolution with every digest
-   recomputed.
-7. **Field classification is enforced.** Both schemas declare a class for every
-   field, a fixture carrying an undeclared field derives `INCONCLUSIVE`, and a
-   conformance test asserts that the declared classes match the normative tables
-   of §6.3.1 — so the partition cannot drift out of the specification silently.
-8. Independence is derived, not read: evidence arriving with `independence_level`
-   pre-filled has it demoted to `claimed_level`, and a claimed level above the
-   derived level is a named finding.
-9. Time authority is derived, not read: a request supplying `source` or
-   `skew_bound_s` has it demoted to `claimed_source` / `claimed_skew_bound_s`,
-   `skew_bound_s` is resolved from the bound policy digest, and a promotion
-   evaluated outside a protected runner or the engine itself cannot derive a
-   promoting source (§6.3.2).
-10. A locally produced decision derives at most level 2, and the reason codes
+   authority, inflated skew bound, stripped authority proof, rewritten lifecycle
+   and smuggled unknown field. In particular a QG result reporting
+   `passed: true` with `executed_count: 0` derives `VOID`, and the six
+   derivation rows are proven to fail on derivation, resolution or chain folding
+   with every digest recomputed.
+10. **Field classification and the extension boundary are enforced.** Both
+    schemas declare a class for every field; a conformance test asserts the
+    declared classes match the normative tables of §6.3.1; an undeclared field
+    *outside* `extensions` derives `INCONCLUSIVE`; a document carrying vendor
+    content *inside* `extensions` parses, derives the same verdict as the same
+    document without it, and produces a different digest; and a policy
+    referencing a path under `extensions` derives `INCONCLUSIVE`.
+11. Independence is derived, not read: evidence arriving with
+    `independence_level` pre-filled has it demoted to `claimed_level`, and a
+    claimed level above the derived level is a named finding.
+12. Time authority is derived, not read: a request supplying `source` or
+    `skew_bound_s` has it demoted to `claimed_source` / `claimed_skew_bound_s`,
+    `skew_bound_s` is resolved from the bound policy digest, the
+    `evaluator.execution_identity` the derivation consumed is bound into the
+    payload, and `protected_runner_clock` — reserved until ACP-4 — derives
+    `INCONCLUSIVE` rather than promoting (§6.3.2).
+13. A locally produced decision derives at most level 2, and the reason codes
     that capped it are printed.
-11. `sdlc explain <decision-id>` reproduces each verdict from the recorded
+14. `sdlc explain <decision-id>` reproduces each verdict from the recorded
     evidence — including the arithmetic of any threshold comparison — without
     re-running QG or CK.
-12. `make check` and the full blocking CI suite pass on the branch with non-zero
+15. `make check` and the full blocking CI suite pass on the branch with non-zero
     execution counts.
 
 ### 18.2 Not in this slice
@@ -1709,6 +1946,27 @@ worth recording plainly: a partition drawn on the wrong axis, and a determinism
 requirement extended to an operation that could not satisfy it. Neither was
 visible without enumerating the fields, which is why the classification now lives
 in a table that a conformance test checks rather than in prose.
+
+### 21.5 Sixth round — review of `94aaecc`
+
+Round 5's field partition, dual digests, replay split and derived time authority
+were accepted. A cross-contract pass then found three defects that the new tables
+had introduced or, in the third case, made visible by stating a rule the older
+prose quietly contradicted. All three corrections are documentation-only.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | BLOCKER — mutable lifecycle changed promotion eligibility outside every integrity boundary. `HELD`/`EXPIRED`/`SUPERSEDED` sat "outside the payload as mutable state", so rewriting one to `ACTIVE` left `content_digest` valid, contradicting both the classification rule and the rule that `HELD + NO_APPROVER` never auto-clears | **There is no lifecycle field.** §6.3.4 folds effective lifecycle at use time from two immutable sources. `EXPIRED` is *derived* from bound evidence and a trusted instant, so there is no flag to flip. `HELD` and `SUPERSEDED` are genuine events and are reached only through `sdlc/decision-transition@1` — an append-only hash chain binding the decision digest, the predecessor digest, actor, reason and instant. A chain that does not fold derives `INCONCLUSIVE` and never falls back to `ACTIVE`; `HELD` clears only by an explicit `RELEASED` transition carrying a qualifying approver; `SUPERSEDED` must name a successor that itself verifies and folds to `ACTIVE`. |
+| — | The expiry formula was wrong and unstated | Stated, and re-anchored to the evidence. `evidence_horizon = min over referenced evidence of (finished_at + freshness_window)`; an optional, separately named `decision_ttl` can only shorten it; `effective_expiry` is the minimum. The old `as_of + window` would have granted a nearly stale result a fresh full window — laundering age through the act of deciding. Deciding again cannot extend the horizon, because `finished_at` is bound. §18.1 asserts that with a two-`as_of` test. |
+| 2 | MAJOR — `protected_runner_clock` required a verified OIDC-bound runner identity and an attested clock proof, but the decision contract bound neither. The payload held the derived word and discarded the premise, and `sdlc verify` cannot re-derive it later | Both halves taken. §6.3.2 adds a bound `evaluator` block — `execution_identity` plus `authority_proof` (kind, digest, the subject it attests) — so the derivation's premises travel with its conclusion; this is `observer.execution_identity` applied to the evaluator, and it is explicitly distinct from the occurrence-only emitting-process identity. And because no ACP-0 adapter can populate `authority_proof` honestly, **`protected_runner_clock` is reserved and not derivable until ACP-4**; a document presenting it derives `INCONCLUSIVE`. `engine_clock` is ACP-0's only promoting source, which §7 already caps. §6.3.3 now states that `sdlc verify` proves self-consistency **only**, and that promotion needs all three of: verifies, bound provenance still satisfies policy at use time, and lifecycle folds to usable. |
+| 3 | MAJOR — §6's "tolerate unknown optional extension fields" and §6.3.1's "an unclassified field derives `INCONCLUSIVE`" cannot both be implemented | One boundary, adopted as recommended. An unknown field **outside** `extensions` is a schema defect. The `extensions` object carries one declared class for the whole subtree — **bound**, so it is digested and visible — while being **semantically inert**: no rule may read it, and a policy referencing a path inside it is a policy defect deriving `INCONCLUSIVE`. Promotion into the bound model takes a schema version bump plus a table row, in one change. §6's preamble no longer says unknown fields are tolerated; it points here. |
+| — | Negatives for all three | §15.1 grows from ten rows to thirteen: **stripped authority proof**, **rewritten lifecycle** (three fixtures — `RELEASED` without an approver, promotion past `effective_expiry`, a deleted terminal transition) and **smuggled unknown field**. Six rows now carry the recompute-every-digest rule, extended to cover chain folding. Two new asserted properties: a *positive* extension fixture proving tolerance and inertness together, and an assertion that `verified` alone is insufficient for promotion. §18.1 grows to fifteen items. |
+
+The first two were introduced by round 5's own tables — the pattern this document
+has now hit three rounds running is that making a rule explicit exposes the place
+it was never applied. The third was the opposite: a contradiction that had sat in
+§6's preamble since v0.1 and only became visible once §6.3.1 stated the
+fail-closed rule precisely enough to collide with it.
 
 ## Appendix A — External reference designs
 
