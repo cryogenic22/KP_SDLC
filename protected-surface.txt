@@ -44,6 +44,12 @@ harness/structural-floor/gen_codeowners.py
 harness/ci/
 harness/selfci/gen_quality_workflow.py
 
+# — Release-boundary privacy: the scanner deciding what may leave the repository
+#   in a release archive, and the ignore rules that keep raw session memory out
+#   of the tree. Weakening either republishes operational memory (#39).
+harness/selfci/release_privacy.py
+.gitignore
+
 # — Agent-session machinery: the hooks that run on every session and the
 #   conventions every session follows (incl. the ctxpack memory ledger wiring).
 #   Tampering here could silently disable the receipts layer.

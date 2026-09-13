@@ -21,11 +21,20 @@ coverage/
 # Harness runtime cache (reuse-injector index — derived, per-machine)
 .harness/cache/
 
-# Agent session machinery: share the hooks config and the memory ledger,
+# Agent session machinery: share the hooks config, the skills and the commands;
 # keep the rest of .claude/ local.
+#
+# CtxPack memory is LOCAL by default. Raw session records, gists and the
+# checkpoint ledger carry machine-specific absolute paths, verbatim prompts and
+# cross-repository working context, so a blanket `!.claude/ctx/` makes every new
+# session tracked-by-default and publishes the operator rather than the product.
+# Only .claude/ctx/public/ — a deliberately authored, sanitized projection — is
+# shared. See the engine's docs/decisions/0004-ctxpack-memory-scopes.md.
 .claude/*
 !.claude/settings.json
 !.claude/ctx/
+.claude/ctx/*
+!.claude/ctx/public/
 !.claude/skills/
 !.claude/commands/
 

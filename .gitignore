@@ -37,10 +37,23 @@ ck-report.json
 # Observatory runtime data (captured events + maturity history — per-machine, never committed)
 .observatory/
 
-# Claude Code — project settings + ctx ledger are shared (committed); rest stays local
+# Claude Code — memory scopes, ratified in docs/decisions/0004-ctxpack-memory-scopes.md.
+#
+# LOCAL by default: raw CtxPack session records, gists and the checkpoint ledger
+# are operational memory. They carry machine-specific absolute paths, verbatim
+# user prompts and cross-repository working context, so publishing them in a
+# release archive publishes the operator, not the product (#39). They stay on
+# disk and out of the tree — nothing here deletes an owner's ledger.
+#
+# PUBLIC is opt-in and explicit: only .claude/ctx/public/ is tracked, and only a
+# sanitized projection belongs there. A new raw session cannot reach a release by
+# default, which is the property the previous `!.claude/ctx/` blanket un-ignore
+# did not have.
 .claude/*
 !.claude/settings.json
 !.claude/ctx/
+.claude/ctx/*
+!.claude/ctx/public/
 
 # Temp
 *.tmp
