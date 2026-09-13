@@ -26,6 +26,7 @@ Two rules make this fail loudly instead of late:
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,9 +62,67 @@ def required_assets() -> tuple[str, ...]:
     return tuple(dict.fromkeys(paths))
 
 
+# Written into the payload root by the build backend
+# (`kp_build_backend.INVENTORY_NAME`); the two names must agree.
+PAYLOAD_INVENTORY = "PAYLOAD.json"
+
+
+def _mapped_dirs() -> tuple[str, ...]:
+    """Engine-root-relative paths that `copy_harness` fans out by listing."""
+    return (f"harness/{hm.SKILLS_SRC}",) + tuple(
+        f"harness/{src}" for src, _dest in hm.DIR_MAP)
+
+
+def payload_inventory(engine_root: Path) -> dict[str, str] | None:
+    """The build-time {relpath: sha256} for a packaged root; None otherwise.
+
+    A checkout has no inventory: there, the working tree *is* the declaration,
+    and a file missing from it is a git-level problem, not a packaging one.
+    """
+    record = engine_root / PAYLOAD_INVENTORY
+    if not record.is_file():
+        return None
+    try:
+        loaded = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        # Unreadable is not absent. Report it as a missing inventory so the
+        # caller fails closed rather than falling back to the weaker check.
+        return {}
+    files = loaded.get("files")
+    return files if isinstance(files, dict) else {}
+
+
 def missing_assets(engine_root: Path) -> list[str]:
-    """Required paths absent from `engine_root`, in declaration order."""
-    return [rel for rel in required_assets() if not (engine_root / rel).exists()]
+    """Every required path absent from `engine_root`, in declaration order.
+
+    Three questions, because `Path.exists()` on a mapped directory answers only
+    the first and the review of #40 found the other two open:
+
+      * is each declared path present at all?
+      * does each directory `copy_harness` fans out actually hold files? An
+        empty one copies nothing and reported `ok`.
+      * for a packaged root, is every file the build staged still there? A
+        directory that exists says nothing about its contents, so deleting
+        `harness/commands/review.md` from a payload used to read as complete.
+    """
+    missing = [rel for rel in required_assets()
+               if not (engine_root / rel).exists()]
+    missing += [rel for rel in _mapped_dirs()
+                if (engine_root / rel).is_dir()
+                and not any(p.is_file() for p in (engine_root / rel).rglob("*"))]
+    missing += _missing_from_inventory(engine_root)
+    return list(dict.fromkeys(missing))
+
+
+def _missing_from_inventory(engine_root: Path) -> list[str]:
+    """Staged files a packaged root no longer carries."""
+    inventory = payload_inventory(engine_root)
+    if inventory is None:
+        return []
+    if not inventory:
+        return [f"{PAYLOAD_INVENTORY} (unreadable or empty)"]
+    return [rel for rel in sorted(inventory)
+            if not (engine_root / rel).is_file()]
 
 
 def payload_digest(engine_root: Path) -> str:

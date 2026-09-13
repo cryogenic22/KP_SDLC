@@ -73,6 +73,10 @@ def test_missing_assets_discriminates_a_single_gap(tmp_path):
         target.parent.mkdir(parents=True, exist_ok=True)
         if source.is_dir():
             target.mkdir(exist_ok=True)
+            # A mapped directory must hold something. An empty one copies
+            # nothing and used to report `ok`, so `missing_assets` now names
+            # it -- which makes an empty stub dir an unfaithful fixture.
+            (target / "stub.md").write_bytes(b"stub")
         else:
             target.write_bytes(b"stub")
     assert ea.missing_assets(tmp_path) == [victim]
@@ -184,3 +188,98 @@ def test_manifest_json_round_trips(tmp_path):
     )
     built = build_repo_manifest(manifest, "2026-09-12", [{"status": "ok"}])
     assert json.loads(json.dumps(built))["engine"]["sha"] is None
+
+
+# ── Review of #40 ───────────────────────────────────────────────────────────
+
+def _backend():
+    """The in-tree PEP 517 backend, imported by path (it is not a package)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "kp_build_backend", REPO_ROOT / "build_support" / "kp_build_backend.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_manifest_in_ships_every_source_the_backend_stages():
+    """The sdist must be able to build a wheel.
+
+    `pyproject.toml` declares an in-tree backend under `build_support/`, which
+    setuptools does not discover as a package -- so neither it nor the assets
+    it stages went into the sdist. `pip install` of the published artifact
+    failed at "Cannot find module 'kp_build_backend'" before any code ran, and
+    five of the eight staging sources were absent besides. Building a wheel
+    in-tree passes either way, which is why nothing caught it.
+
+    A static check rather than a build, so it is fast and names the omission.
+    The round trip itself is proved in the artifact smoke.
+    """
+    backend = _backend()
+    manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    included = {line.split(None, 1)[1].strip().replace("\\", "/")
+                for line in manifest.splitlines()
+                if line.split(None, 1)[:1] in (["graft"], ["include"])
+                and len(line.split(None, 1)) == 2}
+
+    required = ({"build_support"} | set(backend.TREE_SOURCES)
+                | set(backend.FILE_SOURCES) | set(backend.DIR_SOURCES))
+    assert required <= included, (
+        f"MANIFEST.in does not ship {sorted(required - included)} -- the sdist "
+        f"would build an incomplete wheel, or fail to build at all")
+
+
+def test_payload_inventory_is_absent_for_a_checkout(tmp_path):
+    """A checkout's working tree is its own declaration; only a build records one."""
+    assert ea.payload_inventory(tmp_path) is None
+
+
+def test_an_unreadable_inventory_is_not_an_absent_one(tmp_path):
+    (tmp_path / ea.PAYLOAD_INVENTORY).write_text("{not json", encoding="utf-8")
+    assert ea.PAYLOAD_INVENTORY in " ".join(ea.missing_assets(tmp_path))
+
+
+def test_a_file_deleted_inside_a_mapped_directory_is_caught(tmp_path):
+    """The defect the review named.
+
+    `missing_assets` checked `Path.exists()` on mapped *directories*, so a
+    payload with `harness/commands/review.md` deleted still reported complete.
+    Nothing names that file individually -- the directory is the declaration --
+    so only the build-time inventory can notice it is gone.
+    """
+    root = _stub_engine_root(tmp_path)
+    victim = "harness/commands/review.md"
+    (root / victim).parent.mkdir(parents=True, exist_ok=True)
+    (root / victim).write_bytes(b"stub")
+    inventory = {victim: "0" * 64}
+    (root / ea.PAYLOAD_INVENTORY).write_text(
+        json.dumps({"files": inventory}), encoding="utf-8")
+
+    assert ea.missing_assets(root) == []
+    (root / victim).unlink()
+    assert ea.missing_assets(root) == [victim]
+
+
+def test_an_empty_mapped_directory_is_caught(tmp_path):
+    """Distinct from an absent one, and invisible to `Path.exists()`."""
+    root = _stub_engine_root(tmp_path)
+    commands = root / "harness" / "commands"
+    for stale in commands.iterdir():
+        stale.unlink()
+    assert "harness/commands" in ea.missing_assets(root)
+
+
+def _stub_engine_root(tmp_path: Path) -> Path:
+    """A structurally complete engine root built from `required_assets()`."""
+    root = tmp_path / "engine"
+    for rel in ea.required_assets():
+        source = REPO_ROOT / rel
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            target.mkdir(exist_ok=True)
+            (target / "stub.md").write_bytes(b"stub")
+        else:
+            target.write_bytes(b"stub")
+    assert ea.missing_assets(root) == []
+    return root

@@ -57,10 +57,21 @@ BORN_ARTIFACTS = (
     ".claude/skills",
 )
 
-# The asset the planted-negative run deletes. A template rather than a code
-# file: it proves the check covers the harness payload, not just importable code
-# that would fail on import anyway.
+# The assets the planted-negative runs delete, and why there are two.
+#
+# The first is a template rather than a code file: it proves the check covers
+# the harness payload, not just importable code that would fail on import
+# anyway. On its own it was too weak. It is a FILE_MAP entry, so it is named
+# individually in `required_assets()` and a plain `Path.exists()` finds it
+# gone — which meant the planted failure shared the completeness check's blind
+# spot and could not have detected it.
+#
+# The second sits *inside* a mapped directory. Nothing names it individually;
+# the directory is the declaration. Deleting it left the directory present, so
+# the old check reported a complete engine root and `sdlc init` went on to
+# produce a repo silently missing a command.
 PLANTED_VICTIM = "_payload/harness/templates/CLAUDE.md.tmpl"
+PLANTED_NESTED_VICTIM = "_payload/harness/commands/review.md"
 
 
 class SmokeFailure(RuntimeError):
@@ -90,9 +101,52 @@ def _exe(venv: Path, name: str) -> str:
     return str(_venv_bin(venv) / f"{name}{suffix}")
 
 
-def build_wheel(source: Path, out_dir: Path) -> Path:
+def build_sdist(source: Path, out_dir: Path, build_venv: Path) -> Path:
+    """Build the sdist by calling the project's own PEP 517 backend.
+
+    Invoked through the backend rather than `python -m build`, so the smoke
+    needs no dependency the project does not already declare and what it
+    exercises is the exact hook a release runs.
+
+    Run inside a venv holding only the declared build requirement rather than
+    in the ambient interpreter. That is not caution for its own sake: on the
+    development machine a globally installed `pbr` hooks setuptools' egg_info
+    entry points and raises `ModuleNotFoundError: pkg_resources` under Python
+    3.13, which killed the build with nothing wrong in this repository. A smoke
+    whose result depends on what else is installed cannot be evidence.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    _run([sys.executable, "-m", "pip", "wheel", str(source),
+    _run([sys.executable, "-m", "venv", str(build_venv)])
+    _run([_exe(build_venv, "python"), "-m", "pip", "install", "--quiet",
+          "setuptools>=68.0"])
+    # The output directory travels as argv rather than interpolated into the
+    # source: it keeps Windows backslashes out of a Python literal, and it
+    # keeps the engine's own `sql_string_interpolation` rule from reading
+    # `sys.path.insert(...)` inside an f-string as a built SQL statement.
+    stage_sdist = ("import sys; sys.path.insert(0, 'build_support');"
+                   "import kp_build_backend as backend;"
+                   "print(backend.build_sdist(sys.argv[1]))")
+    _run([_exe(build_venv, "python"), "-c", stage_sdist, str(out_dir)],
+         cwd=source)
+    sdists = sorted(out_dir.glob("kp_sdlc-*.tar.gz"))
+    if len(sdists) != 1:
+        raise SmokeFailure(f"expected exactly one kp_sdlc sdist, found {sdists}")
+    return sdists[0]
+
+
+def build_wheel(source: Path, out_dir: Path) -> Path:
+    """Build the wheel *from the sdist*, which is the path a release takes.
+
+    Building in-tree hid two defects behind a checkout that simply had every
+    file already: the sdist carried neither the in-tree build backend nor five
+    of the eight sources `stage_payload()` reads, so `pip install` of the
+    published artifact failed at "Cannot find module 'kp_build_backend'" before
+    any code ran. An in-tree `pip wheel .` passes in both worlds, so it could
+    never have caught it.
+    """
+    sdist = build_sdist(source, out_dir, out_dir.parent / "buildvenv")
+    print(f"[smoke] built {sdist.name} via the in-tree backend")
+    _run([sys.executable, "-m", "pip", "wheel", str(sdist),
           "--no-deps", "--wheel-dir", str(out_dir)])
     wheels = sorted(out_dir.glob("kp_sdlc-*.whl"))
     if len(wheels) != 1:
@@ -157,13 +211,28 @@ def check_bootstrap(venv: Path, workdir: Path, target: Path) -> None:
             raise SmokeFailure(f"bootstrap did not install {rel}")
 
 
-def check_planted_missing_asset(venv: Path, workdir: Path, target: Path) -> str:
-    """Delete one required payload asset; the next run must fail and name it."""
+def check_planted_missing_asset(venv: Path, workdir: Path, target: Path,
+                                relative_victim: str = PLANTED_VICTIM) -> str:
+    """Delete one required payload asset; the next run must fail and name it.
+
+    Restores the victim before returning, so the caller can plant a second one
+    against the same install instead of rebuilding the whole artifact.
+    """
     package_dir = installed_payload_dir(venv)
-    victim = package_dir / PLANTED_VICTIM
+    victim = package_dir / relative_victim
     if not victim.is_file():
         raise SmokeFailure(f"planted victim absent before deletion: {victim}")
+    kept = victim.read_bytes()
     victim.unlink()
+    try:
+        return _require_refusal(venv, workdir, target, relative_victim)
+    finally:
+        victim.write_bytes(kept)
+
+
+def _require_refusal(venv: Path, workdir: Path, target: Path,
+                     relative_victim: str) -> str:
+    """The run must exit non-zero, name the victim, and write nothing."""
 
     proc = _run([_exe(venv, "sdlc"), "init",
                  "--name", "Planted", "--owner", "@release-review",
@@ -174,7 +243,7 @@ def check_planted_missing_asset(venv: Path, workdir: Path, target: Path) -> str:
             "init succeeded with a required asset removed — the completeness "
             "check is vacuous")
     combined = proc.stdout + proc.stderr
-    wanted = "harness/templates/CLAUDE.md.tmpl"
+    wanted = relative_victim.split("_payload/", 1)[-1]
     if wanted not in combined:
         raise SmokeFailure(
             f"init failed but did not name the missing asset {wanted!r}:\n{combined}")
@@ -200,8 +269,10 @@ def run(source: Path, workspace: Path) -> None:
     check_bootstrap(venv, outside, workspace / "layered")
     print("[smoke] sdlc bootstrap OK")
 
-    first_line = check_planted_missing_asset(venv, outside, workspace / "planted")
-    print(f"[smoke] planted missing asset correctly refused: {first_line}")
+    for index, victim in enumerate((PLANTED_VICTIM, PLANTED_NESTED_VICTIM)):
+        first_line = check_planted_missing_asset(
+            venv, outside, workspace / f"planted{index}", victim)
+        print(f"[smoke] planted {victim} correctly refused: {first_line}")
 
 
 def main(argv: list[str] | None = None) -> int:

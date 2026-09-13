@@ -27,6 +27,8 @@ wrapped.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -63,6 +65,14 @@ DIR_SOURCES: tuple[str, ...] = (
     "quality-gate/qg",
     "cathedral-keeper/cathedral_keeper",
 )
+
+# The build-time file list, written into the payload root. A directory that
+# merely *exists* says nothing about what is inside it, so the runtime
+# completeness check has no way to notice a file deleted from a mapped
+# directory unless the build records what it put there. Named in
+# `sdlc_init.engine_assets.PAYLOAD_INVENTORY`; the two must agree.
+INVENTORY_NAME = "PAYLOAD.json"
+INVENTORY_SCHEMA = "sdlc-init/payload@1"
 
 PRUNE_DIRS = frozenset({"__pycache__", "tests", ".pytest_cache", ".mypy_cache"})
 # Engine dirs ship code and config only; the wholesale copy that would also
@@ -115,8 +125,30 @@ def stage_payload() -> int:
             raise RuntimeError(f"cannot stage payload: missing {rel}/ at {ROOT}")
         total += _copy_tree(source, PAYLOAD / rel, suffixes=ENGINE_SUFFIXES)
 
+    total += write_inventory()
     print(f"[kp-build] staged {total} payload files into {PAYLOAD}", file=sys.stderr)
     return total
+
+
+def write_inventory() -> int:
+    """Record every staged file and its sha256. Returns 1 (the inventory file).
+
+    This is what lets the installed engine tell "the directory is there" from
+    "the directory still holds what the build put in it". Without it,
+    `missing_assets()` checked `Path.exists()` on a mapped *directory*, so
+    deleting `harness/commands/review.md` from a payload left the completeness
+    check reporting a complete engine root.
+    """
+    files = {
+        path.relative_to(PAYLOAD).as_posix():
+            hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(PAYLOAD.rglob("*")) if path.is_file()
+    }
+    (PAYLOAD / INVENTORY_NAME).write_text(
+        json.dumps({"schema": INVENTORY_SCHEMA, "count": len(files),
+                    "files": dict(sorted(files.items()))}, indent=2) + "\n",
+        encoding="utf-8", newline="\n")
+    return 1
 
 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):

@@ -1,0 +1,49 @@
+# What the sdist must carry to be able to build a wheel.
+#
+# `pyproject.toml` declares an in-tree PEP 517 backend:
+#
+#     build-backend = "kp_build_backend"
+#     backend-path  = ["build_support"]
+#
+# Neither that directory nor the assets the backend stages are discoverable as
+# packages, so setuptools put none of them in the sdist. The result was an sdist
+# that could not build at all -- `pip install kp_sdlc-*.tar.gz` failed with
+# "Cannot find module 'kp_build_backend'" before any code ran -- and, once the
+# backend was found, would have failed again at "cannot stage payload: missing
+# harness/". Building a wheel in-tree hid both, because in a checkout every one
+# of these paths is simply present.
+#
+# Five of the eight sources `stage_payload()` reads were absent. They are listed
+# individually rather than grafted wholesale so that adding a staging source
+# without adding it here shows up as a failing sdist round-trip rather than as a
+# silently truncated artifact.
+
+# The build backend itself.
+graft build_support
+
+# TREE_SOURCES: the harness tree is a born repo's entire install source.
+graft harness
+
+# FILE_SOURCES: the engine entrypoints and their shipped configs. The two .py
+# files are reachable as modules; the two .json configs are not.
+include quality-gate/quality_gate.py
+include quality-gate/quality-gate.config.json
+include cathedral-keeper/ck.py
+include cathedral-keeper/cathedral-keeper.config.json
+
+# DIR_SOURCES: the engine packages `vendor_engine` byte-copies.
+graft quality-gate/qg
+graft cathedral-keeper/cathedral_keeper
+
+# The staged payload is build output, not source. It is gitignored, and the
+# backend rebuilds it from the sources above on every build. Shipping it inside
+# the sdist would publish a second copy that could silently drift from the
+# engine sources the manifest's per-file sha256 is meaningful against.
+prune sdlc-init/sdlc_init/_payload
+
+# Never ship build or scan residue.
+prune build
+prune dist
+prune .quality-reports
+global-exclude *.py[cod]
+global-exclude __pycache__

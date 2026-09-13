@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 # An unfilled harness placeholder — NOT GitHub Actions' own ${{ ... }} syntax.
 _PLACEHOLDER = re.compile(r"\{\{[A-Z_]+\}\}")
@@ -18,9 +21,15 @@ _PLACEHOLDER = re.compile(r"\{\{[A-Z_]+\}\}")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sdlc_init.cli import main
+from sdlc_init import engine_assets as ea
 from sdlc_init import harness_map as hm
 
 ENGINE = Path(__file__).resolve().parents[2]  # KP_SDLC checkout
+
+
+def _combined(capsys) -> str:
+    captured = capsys.readouterr()
+    return captured.out + captured.err
 
 
 def _init(target: Path, *extra: str) -> int:
@@ -335,3 +344,87 @@ if __name__ == "__main__":
             print(f"  ERROR {name}: {e}")
     print(f"\n{passed} passed, {failed} failed out of {len(tests)} tests")
     raise SystemExit(1 if failed else 0)
+
+
+# ── Review of #40, folding in #41 ────────────────────────────────────────────
+#
+# A phase that cannot install what the map declares must say so. Before this,
+# `_install_files` skipped a missing source silently, so `sdlc init` exited 0
+# and wrote a manifest claiming success for a repo with no CLAUDE.md in it.
+# Driven through `main()` rather than by constructing a phase context, so what
+# is proved is the behaviour of the command a user actually runs.
+
+def _engine_copy(dest: Path) -> Path:
+    """A complete, writable engine root that init can be pointed at."""
+    for component in ("harness", "quality-gate", "cathedral-keeper"):
+        shutil.copytree(ENGINE / component, dest / component,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    return dest
+
+
+def _init_from(engine: Path, target: Path) -> int:
+    return main(["init", "--name", "Demo", "--owner", "@tester",
+                 "--target", str(target), "--engine-root", str(engine),
+                 "--as-of", "2026-01-01"])
+
+
+def test_a_complete_engine_root_still_succeeds(tmp_path):
+    """The planted failures below are only meaningful if the clean case passes."""
+    engine = _engine_copy(tmp_path / "engine")
+    assert _init_from(engine, tmp_path / "born") == 0
+    assert (tmp_path / "born" / "CLAUDE.md").is_file()
+
+
+def test_missing_mapped_template_fails_init_and_writes_nothing(tmp_path):
+    """Issue #41: the reported symptom was exit 0 with no CLAUDE.md written.
+
+    The pre-flight refuses before any phase runs, and it does so by raising
+    rather than returning -- an unusable engine root must stop the command, not
+    hand back a status a caller could ignore.
+    """
+    engine = _engine_copy(tmp_path / "engine")
+    (engine / "harness" / "templates" / "CLAUDE.md.tmpl").unlink()
+    target = tmp_path / "born"
+
+    with pytest.raises(SystemExit) as excinfo:
+        _init_from(engine, target)
+
+    assert "harness/templates/CLAUDE.md.tmpl" in str(excinfo.value)
+    assert not (target / "CLAUDE.md").exists()
+
+
+def test_copy_harness_refuses_even_with_the_preflight_disabled(tmp_path,
+                                                               capsys,
+                                                               monkeypatch):
+    """The #41 experiment, as a test.
+
+    `missing_assets()` normally catches an absent source before any phase runs.
+    Mutating it to a no-op is how the defect was found: init then ran to
+    completion and reported `ok`. The copy phase must refuse on its own.
+    """
+    engine = _engine_copy(tmp_path / "engine")
+    (engine / "harness" / "templates" / "CLAUDE.md.tmpl").unlink()
+    monkeypatch.setattr(ea, "missing_assets", lambda root: [])
+    target = tmp_path / "born"
+
+    assert _init_from(engine, target) != 0
+    output = _combined(capsys)
+    assert "copy_harness" in output
+    assert "harness/templates/CLAUDE.md.tmpl" in output
+    assert not (target / "CLAUDE.md").exists()
+
+
+def test_an_empty_mapped_directory_fails_init(tmp_path, capsys, monkeypatch):
+    """A mapped directory that exists but holds nothing copies nothing.
+
+    Distinct from an absent one: `Path.exists()` is true for an empty
+    `harness/commands/` and a full one alike, so the fan-out produced a repo
+    with no commands and reported `ok`.
+    """
+    engine = _engine_copy(tmp_path / "engine")
+    for stale in (engine / "harness" / "commands").iterdir():
+        stale.unlink()
+    monkeypatch.setattr(ea, "missing_assets", lambda root: [])
+
+    assert _init_from(engine, tmp_path / "born") != 0
+    assert "harness/commands/" in _combined(capsys)
