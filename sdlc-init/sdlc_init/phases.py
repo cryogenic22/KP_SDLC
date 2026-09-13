@@ -31,11 +31,16 @@ def _dest_for_workflow(ctx: InitContext, filename: str) -> str:
     return f"{base}/{filename}"
 
 
-def _install_skills(ctx: InitContext) -> list[str]:
-    """Copy each harness skill directory whole (skip a skill already present)."""
+def _install_skills(ctx: InitContext, missing: list[str]) -> list[str]:
+    """Copy each harness skill directory whole (skip a skill already present).
+
+    `missing` collects sources the map declares that this engine root does not
+    carry. A phase that cannot install what it promised must say so (#41).
+    """
     changes: list[str] = []
     skills_src = ctx.harness_dir / hm.SKILLS_SRC
     if not skills_src.is_dir():
+        missing.append(f"harness/{hm.SKILLS_SRC}/")
         return changes
     for skill in sorted(p for p in skills_src.iterdir() if p.is_dir()):
         if (ctx.target / hm.SKILLS_DEST / skill.name).exists():
@@ -49,24 +54,32 @@ def _install_skills(ctx: InitContext) -> list[str]:
     return changes
 
 
-def _install_files(ctx: InitContext) -> list[str]:
+def _install_files(ctx: InitContext, missing: list[str]) -> list[str]:
     """Copy the explicit FILE_MAP entries."""
     changes: list[str] = []
     for src_rel, dest_rel in hm.FILE_MAP:
         src = ctx.harness_dir / src_rel
-        if src.is_file() and install_file(ctx, src, dest_rel):
+        if not src.is_file():
+            missing.append(f"harness/{src_rel}")
+            continue
+        if install_file(ctx, src, dest_rel):
             changes.append(dest_rel)
     return changes
 
 
-def _install_dirs(ctx: InitContext) -> list[str]:
+def _install_dirs(ctx: InitContext, missing: list[str]) -> list[str]:
     """Copy the DIR_MAP fan-outs; route CI workflows by park classification."""
     changes: list[str] = []
     for src_dir_rel, dest_dir_rel in hm.DIR_MAP:
         src_dir = ctx.harness_dir / src_dir_rel
         if not src_dir.is_dir():
+            missing.append(f"harness/{src_dir_rel}/")
             continue
-        for f in sorted(p for p in src_dir.iterdir() if p.is_file()):
+        entries = sorted(p for p in src_dir.iterdir() if p.is_file())
+        if not entries:
+            missing.append(f"harness/{src_dir_rel}/ (empty)")
+            continue
+        for f in entries:
             name = f.name[:-5] if f.name.endswith(".tmpl") else f.name
             dest_rel = (_dest_for_workflow(ctx, name) if src_dir_rel == "ci"
                         else f"{dest_dir_rel}/{name}")
@@ -78,7 +91,24 @@ def _install_dirs(ctx: InitContext) -> list[str]:
 def copy_harness(ctx: InitContext) -> PhaseResult:
     """Install skills, files, and directory fan-outs from the harness. Parks
     config-carrying workflows and asserts no active file ships a placeholder."""
-    changes = _install_skills(ctx) + _install_files(ctx) + _install_dirs(ctx)
+    missing: list[str] = []
+    changes = (_install_skills(ctx, missing) + _install_files(ctx, missing)
+               + _install_dirs(ctx, missing))
+
+    # #41: a source the map declares but the engine root does not carry used to
+    # be skipped silently, so init exited 0 having installed a repository with
+    # no CLAUDE.md and said nothing. `missing_assets()` is the pre-flight for
+    # this; failing here as well is deliberate defence in depth, because the
+    # defect was found by mutating that pre-flight to a no-op and watching the
+    # run still report success.
+    if missing:
+        count = len(missing)
+        return PhaseResult(
+            "copy_harness", "fail",
+            detail=(f"{count} declared source(s) absent from the engine root: "
+                    f"{', '.join(missing[:5])}"
+                    + (" ..." if count > 5 else "")),
+            changes=changes)
 
     # Anti-case: no active workflow may carry an unfilled placeholder.
     for dest_rel in changes:
@@ -278,8 +308,18 @@ def write_manifest(ctx: InitContext) -> PhaseResult:
     manifest = build_repo_manifest(ctx.manifest, ctx.as_of, [r.as_dict() for r in ctx.results],
                                    vendor_hashes=ctx.vendor_hashes)
     dest = write_repo_manifest(ctx.target, manifest)
-    sha = manifest["engine"]["sha"]
-    if sha == "unknown":
+    engine = manifest["engine"]
+    sha = engine["sha"]
+    provenance = engine.get("provenance", {})
+    if provenance.get("kind") == "package":
+        # A released artifact has no commit of its own, so `sha` is null by
+        # design rather than unresolved. It is pinned by version + payload
+        # digest instead, and saying "unknown" here would read as a failure.
+        digest = str(provenance.get("payload_digest", ""))
+        detail = (f"engine pinned @ kp-sdlc "
+                  f"{provenance.get('package_version', 'unknown')} "
+                  f"payload {digest.removeprefix('sha256:')[:8]}")
+    elif sha == "unknown" or sha is None:
         ctx.log("  [warn] engine SHA could not be resolved (engine_root is not a "
                 "git checkout) — the repo is NOT pinned to a specific engine commit.")
         detail = "engine SHA unknown — not pinned"

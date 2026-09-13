@@ -44,6 +44,14 @@ harness/structural-floor/gen_codeowners.py
 harness/ci/
 harness/selfci/gen_quality_workflow.py
 
+# — Release-artifact composition: what ships in the wheel, the asset contract
+#   `sdlc init` is checked against, and the smoke that proves the installed
+#   artifact works. Quietly dropping a path from the payload would restore the
+#   #38 failure mode — an install that passes `-h` and cannot init.
+build_support/kp_build_backend.py
+sdlc-init/sdlc_init/engine_assets.py
+harness/selfci/artifact_smoke.py
+
 # — Agent-session machinery: the hooks that run on every session and the
 #   conventions every session follows (incl. the ctxpack memory ledger wiring).
 #   Tampering here could silently disable the receipts layer.

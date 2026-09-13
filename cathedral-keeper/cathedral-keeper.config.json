@@ -3,11 +3,14 @@
   "name": "Cathedral Keeper (Default)",
   "paths": {
     "include": [],
-    "extensions": [".py"],
+    "extensions": [
+      ".py"
+    ],
     "exclude": [
       "**/node_modules/**",
       "**/dist/**",
       "**/build/**",
+      "**/_payload/**",
       "**/output/**",
       "**/.git/**",
       "**/__pycache__/**",
@@ -17,16 +20,39 @@
       "**/venv/**",
       "**/venv*/**",
       "**/site-packages/**",
-      "**/.quality-reports/**"
+      "**/.quality-reports/**",
+      "build/**",
+      "dist/**",
+      "*.egg-info/**",
+      "**/*.egg-info/**"
     ]
   },
   "integrations": {
-    "quality_gate": { "enabled": true, "qg_path": "quality-gate/quality_gate.py" },
-    "external_findings_json": { "enabled": false, "argv": [], "cwd": null }
+    "quality_gate": {
+      "enabled": true,
+      "qg_path": "quality-gate/quality_gate.py"
+    },
+    "external_findings_json": {
+      "enabled": false,
+      "argv": [],
+      "cwd": null
+    }
   },
   "policies": {
-    "CK-PY-CYCLES": { "enabled": true, "type": "python_cycles", "severity": "high", "config": {} },
-    "CK-PY-BOUNDARIES": { "enabled": false, "type": "python_boundaries", "severity": "high", "config": { "rules": [] } },
+    "CK-PY-CYCLES": {
+      "enabled": true,
+      "type": "python_cycles",
+      "severity": "high",
+      "config": {}
+    },
+    "CK-PY-BOUNDARIES": {
+      "enabled": false,
+      "type": "python_boundaries",
+      "severity": "high",
+      "config": {
+        "rules": []
+      }
+    },
     "CK-ARCH-LAYER-DIRECTION": {
       "enabled": false,
       "severity": "high",
@@ -41,10 +67,20 @@
       "severity": "low",
       "config": {
         "entry_point_patterns": [
-          "**/cli.py", "**/__main__.py", "**/conftest.py", "**/test_*.py",
-          "**/*_test.py", "**/tests/**", "**/test/**", "**/celery_*.py",
-          "**/migrations/**", "**/alembic/**", "**/manage.py", "**/setup.py",
-          "**/tasks.py", "**/__init__.py"
+          "**/cli.py",
+          "**/__main__.py",
+          "**/conftest.py",
+          "**/test_*.py",
+          "**/*_test.py",
+          "**/tests/**",
+          "**/test/**",
+          "**/celery_*.py",
+          "**/migrations/**",
+          "**/alembic/**",
+          "**/manage.py",
+          "**/setup.py",
+          "**/tasks.py",
+          "**/__init__.py"
         ]
       }
     },
@@ -76,15 +112,26 @@
       "severity": "high",
       "config": {
         "services": [],
-        "allow_shared": ["**/shared/**", "**/common/**", "**/models/**"]
+        "allow_shared": [
+          "**/shared/**",
+          "**/common/**",
+          "**/models/**"
+        ]
       }
     },
     "CK-ARCH-CONFIG-SPRAWL": {
       "enabled": false,
       "severity": "medium",
       "config": {
-        "settings_modules": ["**/settings.py", "**/config.py"],
-        "allow_direct_env": ["**/settings.py", "**/config.py", "**/conftest.py"]
+        "settings_modules": [
+          "**/settings.py",
+          "**/config.py"
+        ],
+        "allow_direct_env": [
+          "**/settings.py",
+          "**/config.py",
+          "**/conftest.py"
+        ]
       }
     },
     "CK-ARCH-TEST-ALIGNMENT": {
@@ -92,7 +139,9 @@
       "severity": "low",
       "config": {
         "source_roots": [],
-        "test_roots": ["tests"],
+        "test_roots": [
+          "tests"
+        ],
         "test_pattern": "test_{module}.py",
         "require_boundary_tests": true,
         "require_llm_evals": false
@@ -102,21 +151,51 @@
       "enabled": false,
       "severity": "low",
       "config": {
-        "env_docs": [".env.example"],
+        "env_docs": [
+          ".env.example"
+        ],
         "flag_conditional_env": true,
-        "ignore_keys": ["PATH", "HOME", "USER", "PYTHONPATH"]
+        "ignore_keys": [
+          "PATH",
+          "HOME",
+          "USER",
+          "PYTHONPATH"
+        ]
       }
     },
     "CK-ARCH-DEPENDENCY-HEALTH": {
       "enabled": false,
       "severity": "info",
       "config": {
-        "dependency_files": ["requirements.txt", "pyproject.toml", "requirements-dev.txt"],
+        "dependency_files": [
+          "requirements.txt",
+          "pyproject.toml",
+          "requirements-dev.txt"
+        ],
         "overlap_categories": {
-          "http_client": ["requests", "httpx", "aiohttp", "urllib3"],
-          "orm": ["sqlalchemy", "tortoise-orm", "peewee", "django"],
-          "mongo": ["pymongo", "mongoengine", "motor"],
-          "task_queue": ["celery", "dramatiq", "rq", "huey"]
+          "http_client": [
+            "requests",
+            "httpx",
+            "aiohttp",
+            "urllib3"
+          ],
+          "orm": [
+            "sqlalchemy",
+            "tortoise-orm",
+            "peewee",
+            "django"
+          ],
+          "mongo": [
+            "pymongo",
+            "mongoengine",
+            "motor"
+          ],
+          "task_queue": [
+            "celery",
+            "dramatiq",
+            "rq",
+            "huey"
+          ]
         }
       }
     },
@@ -134,7 +213,11 @@
       "severity": "low",
       "_description": "TESTED_BY edge detection: analyzes test file imports to find source files with zero test coverage (no test file imports them).",
       "config": {
-        "exclude_patterns": ["**/__init__.py", "**/conftest.py", "**/migrations/**"]
+        "exclude_patterns": [
+          "**/__init__.py",
+          "**/conftest.py",
+          "**/migrations/**"
+        ]
       }
     },
     "CK-COHERENCE": {
@@ -160,6 +243,11 @@
       }
     }
   },
-  "reporting": { "top_findings": 50, "top_files": 30 },
-  "thresholds": { "fail_on_severity_at_or_above": "high" }
+  "reporting": {
+    "top_findings": 50,
+    "top_files": 30
+  },
+  "thresholds": {
+    "fail_on_severity_at_or_above": "high"
+  }
 }

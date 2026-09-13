@@ -1,6 +1,11 @@
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+# In-tree backend (build_support/kp_build_backend.py). It stages harness/ and
+# the QG/CK vendoring sources into sdlc_init/_payload/ before delegating to
+# setuptools, so an installed wheel can run `sdlc init` outside a checkout
+# (issue #38). A checkout has no payload and resolves to itself.
+build-backend = "kp_build_backend"
+backend-path = ["build_support"]
 
 [project]
 name = "kp-sdlc"
@@ -88,3 +93,7 @@ sdlc_schemas = [
 # The dashboard HTML ships with the package so `kp-observatory serve` works from
 # an installed wheel, not just an in-tree checkout.
 observatory = ["static/*.html"]
+# The staged engine payload: harness/ plus the QG/CK sources vendor_engine
+# byte-copies. Written by the in-tree build backend and gitignored, so this
+# glob matches nothing in a checkout and everything in a release artifact.
+sdlc_init = ["_payload/**/*"]

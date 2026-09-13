@@ -29,6 +29,10 @@ class InitManifest:
     engine_root: Path
     profile: str = "explore"
     onboard_ctxpack: bool = False
+    # How engine_root was resolved (engine_assets.provenance_record). A packaged
+    # release records its distribution version and payload digest; a checkout
+    # records its commit. Never both, and never a fabricated SHA — see #38.
+    engine_provenance: dict | None = None
 
     def validate(self) -> None:
         if not self.project_name.strip():
@@ -85,11 +89,22 @@ def vendored_record(hashes: dict[str, str]) -> dict:
 
 def build_repo_manifest(m: InitManifest, as_of: str, phase_results: list[dict],
                         vendor_hashes: dict[str, str] | None = None) -> dict:
+    provenance = m.engine_provenance or {"kind": "checkout"}
     engine: dict = {
         "source": m.engine_root.as_posix(),  # portable in a committed file
-        "sha": engine_sha(m.engine_root),
-        "version": engine_version(m.engine_root),
+        "provenance": provenance,
     }
+    if provenance.get("kind") == "package":
+        # A packaged payload has no commit of its own. `git rev-parse` run
+        # inside site-packages can still succeed by walking up into whatever
+        # repository happens to contain the environment, so it is not called at
+        # all here: the release identity is the distribution version plus the
+        # payload digest already carried in `provenance`.
+        engine["sha"] = None
+        engine["version"] = provenance.get("package_version", "unknown")
+    else:
+        engine["sha"] = engine_sha(m.engine_root)
+        engine["version"] = engine_version(m.engine_root)
     if vendor_hashes:
         engine["vendored"] = vendored_record(vendor_hashes)
     return {

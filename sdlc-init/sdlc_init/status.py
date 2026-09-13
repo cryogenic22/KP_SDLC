@@ -191,6 +191,7 @@ def _manifest_summary(manifest: dict) -> dict:
             "project_name": manifest.get("project_name"),
             "created": manifest.get("created"),
             "engine_sha": engine.get("sha"),
+            "engine_provenance": engine.get("provenance") or {},
             "engine_version": engine.get("version")}
 
 
@@ -261,8 +262,17 @@ def _header_lines(report: dict) -> list[str]:
     meta = report.get("manifest") or {}
     if not meta:
         return ["[sdlc status]"]
+    provenance = meta.get("engine_provenance") or {}
+    if provenance.get("kind") == "package":
+        # Born from a release artifact: there is no commit, and printing
+        # "engine=None" would read as a broken manifest rather than a pin by
+        # version + payload digest.
+        digest = str(provenance.get("payload_digest", "")).removeprefix("sha256:")
+        pin = f"pkg:{provenance.get('package_version', 'unknown')}@{digest[:8]}"
+    else:
+        pin = str(meta.get("engine_sha"))[:12]
     lines = [f"[sdlc status] {meta.get('project_name')}  "
-             f"engine={str(meta.get('engine_sha'))[:12]} "
+             f"engine={pin} "
              f"v{meta.get('engine_version')}  born={meta.get('created')}"]
     if meta.get("init_status") == "failed":
         lines.append("  WARNING: this repo's init recorded status=failed")

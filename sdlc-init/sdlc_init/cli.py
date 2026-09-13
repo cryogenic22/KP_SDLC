@@ -14,16 +14,12 @@ import datetime
 import sys
 from pathlib import Path
 
+from . import engine_assets as ea
 from . import harness_map as hm
 from . import phases as ph
 from . import status as st
 from .executor import InitContext, run
 from .manifest import InitManifest
-
-
-def _default_engine_root() -> Path:
-    # sdlc-init/sdlc_init/cli.py → engine root is two parents up.
-    return Path(__file__).resolve().parents[2]
 
 
 def _today() -> str:
@@ -43,7 +39,12 @@ def _prompt(label: str, current: str | None) -> str:
 
 def _make_context(args, *, dry_run: bool, subs_name: str, subs_owner: str,
                   parked_workflows: frozenset[str] = hm.CONFIG_WORKFLOWS) -> InitContext:
-    engine_root = Path(args.engine_root).resolve()
+    # Resolve before touching the target: an unusable engine root must fail
+    # with a named missing asset, not part-way through a phase that has already
+    # written files (#38).
+    resolved = ea.resolve(getattr(args, "engine_root", None))
+    ea.require_complete(resolved)
+    engine_root = resolved.path
     target = Path(args.target).resolve()
     target.mkdir(parents=True, exist_ok=True)
     manifest = InitManifest(
@@ -52,6 +53,7 @@ def _make_context(args, *, dry_run: bool, subs_name: str, subs_owner: str,
         target=target,
         engine_root=engine_root,
         profile=getattr(args, "profile", "explore"),
+        engine_provenance=ea.provenance_record(resolved),
     )
     manifest.validate()
     as_of = args.as_of or _today()
@@ -145,15 +147,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--owner", help="Reviewing owner, e.g. @user or @org/team")
     p_init.add_argument("--target", default=".", help="Target repo dir (default: cwd)")
     p_init.add_argument("--profile", default="explore", help="Init profile (default: explore)")
-    p_init.add_argument("--engine-root", default=str(_default_engine_root()),
-                        help="KP_SDLC engine checkout (default: this repo)")
+    p_init.add_argument("--engine-root", default=None,
+                        help="KP_SDLC engine root (default: the packaged "
+                             "payload when installed, else this checkout)")
     p_init.add_argument("--as-of", default=None, help="ISO date stamp (default: today)")
     p_init.add_argument("--dry-run", action="store_true", help="Plan only; write nothing")
     p_init.set_defaults(func=cmd_init)
 
     p_bs = sub.add_parser("bootstrap", help="Copy-only harness install (shim path)")
     p_bs.add_argument("--target", default=".", help="Target repo dir (default: cwd)")
-    p_bs.add_argument("--engine-root", default=str(_default_engine_root()))
+    p_bs.add_argument("--engine-root", default=None)
     p_bs.add_argument("--as-of", default=None)
     p_bs.add_argument("--dry-run", action="store_true")
     p_bs.set_defaults(func=cmd_bootstrap)
