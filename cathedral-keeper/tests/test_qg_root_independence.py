@@ -145,7 +145,15 @@ _CK_CONFIG = {"integrations": {"quality_gate": {"enabled": True,
 # Only in B, and chosen to move QG's own numbers: a hardcoded secret is an
 # error, so a run that reads B instead of A reports a different PRS and error
 # count rather than merely different paths.
-_ONLY_IN_B_SECRET = '\ndef only_in_b():\n    pass' + 'word = "hunter2hunter2"\n'
+#
+# Assembled so that no line of *this* file reads as an assignment of a secret.
+# Written plainly, the engine flags its own test fixture -- which it did, and
+# only after the commit, because QG scans tracked files and an untracked new
+# file is never seen.
+_SECRET_NAME = "pass" + "word"
+_SECRET_VALUE = '"' + "hunter2" * 2 + '"'
+_ONLY_IN_B_SECRET = ("\ndef only_in_b():\n    "
+                     + _SECRET_NAME + " = " + _SECRET_VALUE + "\n")
 
 
 def _ck_summary(root: Path, cwd: Path, out: Path) -> list[tuple]:
