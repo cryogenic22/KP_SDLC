@@ -156,3 +156,100 @@ def test_the_public_path_is_still_trackable():
             "unpublishable, which makes the scope model a dead letter")
     finally:
         probe.unlink(missing_ok=True)
+
+
+# ── Review of #42: three ways the detector could be trusted too far ──────────
+#
+# Each test below fails if its fix is reverted, and the first carries its own
+# planted failure: a coverage assertion that cannot itself be vacuous.
+
+def test_every_detector_has_its_own_positive_control(rp):
+    """A rule name is not a detector.
+
+    Seven patterns report `credential`, so a self-test keyed by rule name let
+    one matching pattern vouch for all seven. Three detectors shipped with no
+    positive control at all (`github fine-grained token`, `aws secret`,
+    `local scan output`) while the self-test reported green.
+    """
+    fixtures = rp._fixtures()
+    content = {label for label, _ in rp._content_detectors()}
+    paths = {label for label, _ in rp._LOCAL_ONLY_PATHS}
+    assert content == set(fixtures["content"])
+    assert paths == set(fixtures["path"])
+
+
+def test_a_detector_without_a_fixture_fails_the_selftest(rp, monkeypatch):
+    """The planted failure for the check above — coverage must have teeth."""
+    import re
+
+    monkeypatch.setattr(
+        rp, "_CREDENTIAL_PATTERNS",
+        rp._CREDENTIAL_PATTERNS + (("planted", re.compile(r"NEVERMATCHED")),))
+    assert any("planted" in failure for failure in rp.selftest())
+
+
+def test_a_fixture_its_own_detector_misses_fails_the_selftest(rp, monkeypatch):
+    """Coverage alone is not enough: the sample must match *its* detector."""
+    original = rp._fixtures
+    monkeypatch.setattr(rp, "_fixtures", lambda: {
+        **original(),
+        "content": {**original()["content"], "aws secret": "harmless text"},
+    })
+    assert any("aws secret" in failure for failure in rp.selftest())
+
+
+def test_a_nul_byte_does_not_suppress_the_content_rules(rp):
+    """One NUL in the first 8 KiB used to skip the file's content entirely."""
+    secret = "token = " + "sk-" + "E" * 24
+    laced = ("note" + chr(0) + secret).encode("utf-8")
+    assert "credential" in {f.rule for f in rp.scan_blob("probe.bin", laced)}
+
+
+def test_utf16_content_is_scanned(rp):
+    """UTF-16 is the canonical NUL-carrying encoding.
+
+    Decoded as UTF-8 it interleaves a NUL through every word, so a credential
+    written in UTF-16 matches no content rule in that view.
+    """
+    secret = ("token = " + "sk-" + "F" * 24).encode("utf-16-le")
+    assert "credential" in {f.rule for f in rp.scan_blob("wide.txt", secret)}
+
+
+def test_a_nul_carrying_blob_is_reported_not_silently_skipped(rp):
+    """Scanning a replace-decoded binary proves nothing about the mangled bytes.
+
+    The release set carries no binary today, so reporting one costs nothing
+    until somebody adds it — at which point it is a reviewed ALLOW entry.
+    """
+    rules = {f.rule for f in rp.scan_blob("x.bin", b"a" + bytes(1) + b"b")}
+    assert "unscannable-content" in rules
+    assert not rp.scan_blob("clean.txt", b"ordinary text, nothing flagged")
+
+
+@pytest.mark.parametrize("path", [
+    ".Claude/CTX/session-abc" + ".CTX",
+    "CLAUDE OUT" + "PUTS/report.html",
+    ".Quality-Re" + "ports/report.json",
+])
+def test_path_rules_are_case_insensitive(rp, path):
+    """Windows is case-insensitive, so the same file can reach the index under
+    a different spelling. A case-sensitive path rule lets that spelling ship."""
+    assert rp.scan_path(path)
+
+
+@pytest.mark.parametrize("sample", [
+    "see C:" + _BS + "users" + _BS + _WHO + _BS + "x",
+    "open /us" + "ers/" + _WHO.title() + "/Library/x",
+])
+def test_user_home_content_rules_are_case_insensitive(rp, sample):
+    assert "absolute-user-path" in [f.rule for f in rp.scan_text("p.txt", sample)]
+
+
+def test_a_rest_route_is_not_a_home_directory(rp):
+    """The cost of case-insensitivity, paid for by the `_MAC_HOME` lookbehind.
+
+    `/users/` is an extremely common route; an absolute home path begins at a
+    path root, never mid-segment.
+    """
+    route = "GET /api/us" + "ers/" + _WHO + "/profile returns 200"
+    assert rp.scan_text("routes.md", route) == []

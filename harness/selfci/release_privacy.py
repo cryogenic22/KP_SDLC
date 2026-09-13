@@ -45,10 +45,29 @@ PLACEHOLDER_USERS = frozenset({
     "home", "example", "someone", "<user>", "USERNAME",
 })
 
-_WINDOWS_USER = re.compile(r"[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}([A-Za-z0-9_.-]+)")
-_POSIX_HOME = re.compile(r"/home/([a-z][a-z0-9_.-]*)/")
-_MAC_HOME = re.compile(r"/Users/([A-Za-z][A-Za-z0-9_.-]*)/")
-_USER_HOME_PATTERNS = (_WINDOWS_USER, _POSIX_HOME, _MAC_HOME)
+# Windows and macOS compare paths case-insensitively, so a lower-cased drive
+# path and a title-cased one name the same home directory and must be detected
+# identically. Linux is case-sensitive, so `/home/` stays literal there and only
+# the account name widens.
+#
+# No example is spelled out here on purpose. The first draft of this comment
+# carried two, and they were real enough that this file's own scanner flagged
+# its own source the moment the rules below became case-insensitive — caught by
+# `test_release_tree_is_clean` in CI. Examples live in `_fixtures()`, assembled
+# from fragments.
+_WINDOWS_USER = re.compile(
+    r"[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}([A-Za-z0-9_.-]+)", re.I)
+_POSIX_HOME = re.compile(r"/home/([A-Za-z][A-Za-z0-9_.-]*)/")
+# The lookbehind is what makes the case-insensitive form safe: `/users/` is an
+# extremely common REST route, and without it `GET /api/users/alice` would be
+# reported as someone's home directory. An absolute home path begins at a path
+# root, never in the middle of a longer path segment.
+_MAC_HOME = re.compile(r"(?<![A-Za-z0-9_./-])/Users/([A-Za-z][A-Za-z0-9_.-]*)/", re.I)
+_USER_HOME_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("windows user home", _WINDOWS_USER),
+    ("linux home", _POSIX_HOME),
+    ("mac user home", _MAC_HOME),
+)
 
 _CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("sk-prefixed provider key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
@@ -63,13 +82,24 @@ _CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 # Path shapes that are local operational memory or local build output. These are
 # judged by path, not content: a raw session record is out of scope for a public
 # artifact even when it happens to contain nothing sensitive.
+#
+# Matched case-insensitively: the repository is authored on Windows, whose
+# filesystem is case-insensitive, so the same file can reach the index as
+# `.claude/ctx/x.ctx` or `.Claude/CTX/x.CTX`. A case-sensitive path rule would
+# let the second spelling ship.
 _LOCAL_ONLY_PATHS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("raw ctx session record", re.compile(r"^\.claude/ctx/.*\.ctx$")),
-    ("ctx session gist", re.compile(r"^\.claude/ctx/.*gist\.md$")),
-    ("ctx session ledger", re.compile(r"^\.claude/ctx/(?!public/).*\.jsonl$")),
-    ("local agent output", re.compile(r"^Claude outputs?/")),
-    ("local scan output", re.compile(r"^\.quality-reports/")),
+    ("raw ctx session record", re.compile(r"^\.claude/ctx/.*\.ctx$", re.I)),
+    ("ctx session gist", re.compile(r"^\.claude/ctx/.*gist\.md$", re.I)),
+    ("ctx session ledger",
+     re.compile(r"^\.claude/ctx/(?!public/).*\.jsonl$", re.I)),
+    ("local agent output", re.compile(r"^Claude outputs?/", re.I)),
+    ("local scan output", re.compile(r"^\.quality-reports/", re.I)),
 )
+
+# How far into a blob a NUL byte is looked for. A NUL means the file is not
+# provably plain text, which is a reportable state rather than a reason to stop
+# scanning it — see `_decodings` and the `unscannable-content` rule.
+_BINARY_PROBE = 8192
 
 # Reviewed exceptions, scoped to one rule per path rather than muting a file
 # wholesale. Empty on purpose. An entry would be a decision that a specific path
@@ -116,8 +146,45 @@ def blob(rev: str, path: str, root: Path = REPO_ROOT) -> bytes:
     return proc.stdout
 
 
-def _is_binary(data: bytes) -> bool:
-    return b"\x00" in data[:8192]
+def has_nul(data: bytes) -> bool:
+    """True when the blob is not provably plain text."""
+    return b"\x00" in data[:_BINARY_PROBE]
+
+
+def _decodings(data: bytes) -> list[str]:
+    """Every text view of a blob that is worth scanning.
+
+    A NUL byte used to end the scan for that file, which made it the cheapest
+    possible bypass: one NUL anywhere in the first 8 KiB and the credential and
+    home-path rules never ran. They run now.
+
+    UTF-16 is the reason one view is not enough. It is the canonical
+    NUL-carrying text encoding, and decoding it as UTF-8 interleaves a NUL
+    through every word, so `sk-AAAA...` becomes `s\\x00k\\x00-\\x00A...` and no
+    content rule can match it. The extra views cost nothing on ordinary files,
+    which never reach them.
+    """
+    views = [data.decode("utf-8", errors="replace")]
+    if not has_nul(data):
+        return views
+    for codec in ("utf-16-le", "utf-16-be"):
+        decoded = _try_decode(data, codec)
+        if decoded is not None:
+            views.append(decoded)
+    return views
+
+
+def _try_decode(data: bytes, codec: str) -> str | None:
+    """Decode under `codec`, or None when the blob is not that encoding.
+
+    The failure is a fact about the blob, not an error to swallow: a blob that
+    is not UTF-16 simply has no UTF-16 view, and the caller still scans the
+    UTF-8 view and still reports the file as unscannable.
+    """
+    try:
+        return data.decode(codec)
+    except (UnicodeDecodeError, ValueError):
+        return None
 
 
 def _line_number(offsets: list[int], position: int) -> int:
@@ -138,7 +205,7 @@ def _credential_findings(path: str, text: str, offsets: list[int]) -> list[Findi
 
 def _user_path_findings(path: str, text: str, offsets: list[int]) -> list[Finding]:
     findings: list[Finding] = []
-    for pattern in _USER_HOME_PATTERNS:
+    for _label, pattern in _USER_HOME_PATTERNS:
         for match in pattern.finditer(text):
             who = match.group(1)
             if who.lower() in PLACEHOLDER_USERS:
@@ -171,52 +238,99 @@ def scan_path(path: str) -> list[Finding]:
     return []
 
 
+def scan_blob(path: str, data: bytes) -> list[Finding]:
+    """Every finding for one blob's content, across all of its text views.
+
+    A NUL-carrying blob yields an `unscannable-content` finding *in addition to*
+    whatever the content rules match, because a passing content scan over a
+    replace-decoded binary proves nothing about the bytes it mangled. The
+    release set carries no binary today, so this costs nothing until someone
+    adds one — at which point it is a reviewed `ALLOW` entry, not a silent pass.
+    """
+    findings: list[Finding] = []
+    if has_nul(data):
+        findings.append(Finding(
+            path, "unscannable-content",
+            "NUL bytes: content is not provably text", 0))
+    for text in _decodings(data):
+        findings.extend(scan_text(path, text))
+    return list(dict.fromkeys(findings))
+
+
 def scan(rev: str = "HEAD", root: Path = REPO_ROOT) -> list[Finding]:
     findings: list[Finding] = []
     for path in release_paths(rev, root):
         allowed = ALLOW.get(path, frozenset())
-        findings.extend(f for f in scan_path(path) if f.rule not in allowed)
-        data = blob(rev, path, root)
-        if _is_binary(data):
-            continue
-        text = data.decode("utf-8", errors="replace")
-        findings.extend(f for f in scan_text(path, text) if f.rule not in allowed)
+        candidates = scan_path(path) + scan_blob(path, blob(rev, path, root))
+        findings.extend(f for f in candidates if f.rule not in allowed)
     return findings
 
 
-def _fixtures() -> dict[str, list]:
-    """Detector fixtures, assembled from fragments.
+def _content_detectors() -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Every detector `scan_text` applies, as (label, pattern)."""
+    return _CREDENTIAL_PATTERNS + _USER_HOME_PATTERNS
 
-    Nothing here is a literal: written as one, this file's own source would trip
-    its own rules, and the only remedies would be an allowlist over the scanner
-    or a weaker rule — both worse than the awkwardness of concatenation.
+
+# Fixture fragments. Nothing in this file is written as a flaggable literal:
+# written as one, this file's own source would trip its own rules, and the only
+# remedies would be an allowlist over the scanner or a weaker rule — both worse
+# than the awkwardness of concatenation.
+_BS = chr(92)
+_WHO = "ali" + "ce"
+
+
+def _content_fixtures() -> dict[str, str]:
+    """One positive per content detector, keyed by that detector's own label.
+
+    Keyed by label rather than listed by rule name because a rule name is not a
+    detector: seven distinct patterns all report `credential`, so a list keyed
+    by rule let one matching pattern vouch for all seven.
     """
-    bs = chr(92)
-    who = "ali" + "ce"
     return {
-        "content_positive": [
-            ("absolute-user-path", "see C:" + bs + "Users" + bs + who + bs + "x"),
-            ("absolute-user-path", "cd C:/" + "Users/" + who + "/Documents"),
-            ("absolute-user-path", "log at /ho" + "me/" + who + "/app.log"),
-            ("absolute-user-path", "open /Us" + "ers/" + who.title() + "/Lib/x"),
-            ("credential", "token = " + "sk-" + "A" * 24),
-            ("credential", "GH=" + "ghp_" + "b" * 24),
-            ("credential", "key " + "AKIA" + "A" * 16),
-            ("credential", "-----BEGIN RSA " + "PRIVATE KEY" + "-----"),
-            ("credential", "xox" + "b-" + "1" * 14),
+        "sk-prefixed provider key": "token = " + "sk-" + "A" * 24,
+        "github token": "GH=" + "ghp_" + "b" * 24,
+        "github fine-grained token": "PAT " + "github" + "_pat_" + "c" * 24,
+        "aws access key id": "key " + "AKIA" + "A" * 16,
+        "slack token": "hook " + "xox" + "b-" + "1" * 14,
+        "private key block": "-----BEGIN RSA " + "PRIVATE KEY" + "-----",
+        "aws secret": "aws" + "_secret_access_key" + " = " + "d" * 24,
+        # Deliberately lower-cased: on Windows and macOS these spell the same
+        # directories as their title-cased forms.
+        "windows user home": "see C:" + _BS + "users" + _BS + _WHO + _BS + "x",
+        "linux home": "log at /ho" + "me/" + _WHO + "/app.log",
+        "mac user home": "open /us" + "ers/" + _WHO.title() + "/Lib/x",
+    }
+
+
+def _path_fixtures() -> dict[str, str]:
+    """One positive per path detector, keyed by that detector's own label."""
+    return {
+        "raw ctx session record": ".claude/ctx/session-abc123" + ".ctx",
+        "ctx session gist": ".claude/ctx/latest-" + "gist.md",
+        "ctx session ledger": ".claude/ctx/checkpoints" + ".jsonl",
+        "local agent output": "Claude out" + "puts/report.html",
+        "local scan output": ".quality-re" + "ports/report.json",
+    }
+
+
+def _fixtures() -> dict[str, object]:
+    """Every self-test sample: positives per detector, plus the negatives."""
+    return {
+        "content": _content_fixtures(),
+        "path": _path_fixtures(),
+        "path_case_variants": [
+            ".Claude/CTX/session-abc123" + ".CTX",
+            "CLAUDE OUT" + "PUTS/report.html",
+            ".Quality-Re" + "ports/report.json",
         ],
         "content_negative": [
             "a normal sentence about /ho" + "me directories in general",
-            "install to C:" + bs + "Users" + bs + "<user>" + bs + "AppData",
+            "install to C:" + _BS + "Users" + _BS + "<user>" + _BS + "AppData",
             "the runner home is /ho" + "me/runner/work and that is CI",
             "sk-" + "not-a-key",
             "relative path .claude/ctx/public/decisions.md",
-        ],
-        "path_positive": [
-            ".claude/ctx/session-abc123" + ".ctx",
-            ".claude/ctx/latest-" + "gist.md",
-            ".claude/ctx/checkpoints" + ".jsonl",
-            "Claude out" + "puts/report.html",
+            # The route, not a home directory — locks the `_MAC_HOME` lookbehind.
+            "GET /api/us" + "ers/" + _WHO + "/profile returns 200",
         ],
         "path_negative": [
             ".claude/settings.json",
@@ -231,11 +345,37 @@ def _rules_hit(sample: str) -> list[str]:
     return [f.rule for f in scan_text("probe.txt", sample)]
 
 
-def _check_content_rules(fixtures: dict[str, list]) -> list[str]:
-    failures: list[str] = []
-    for rule, sample in fixtures["content_positive"]:
-        if rule not in _rules_hit(sample):
-            failures.append(f"rule {rule!r} did not match its positive sample")
+def _uncovered(detectors: tuple[tuple[str, re.Pattern[str]], ...],
+               samples: dict[str, str], kind: str) -> list[str]:
+    """Detectors with no positive fixture, and fixtures naming no detector.
+
+    This is the check that makes the rest of the self-test non-vacuous. Without
+    it, `github fine-grained token`, `aws secret` and `local scan output`
+    shipped with no positive control at all while the self-test reported green.
+    A detector added without a fixture now fails the gate.
+    """
+    labels = {label for label, _ in detectors}
+    covered = set(samples)
+    return ([f"{kind} detector {label!r} has no positive fixture"
+             for label in sorted(labels - covered)]
+            + [f"{kind} fixture {label!r} names no detector"
+               for label in sorted(covered - labels)])
+
+
+def _check_own_positive(detectors: tuple[tuple[str, re.Pattern[str]], ...],
+                        samples: dict[str, str], kind: str) -> list[str]:
+    """Each fixture must be matched by the detector it is named for."""
+    by_label = dict(detectors)
+    return [f"{kind} detector {label!r} did not match its own positive sample"
+            for label, sample in sorted(samples.items())
+            if label in by_label and not by_label[label].search(sample)]
+
+
+def _check_content_rules(fixtures: dict) -> list[str]:
+    detectors = _content_detectors()
+    samples: dict[str, str] = fixtures["content"]
+    failures = (_uncovered(detectors, samples, "content")
+                + _check_own_positive(detectors, samples, "content"))
     for sample in fixtures["content_negative"]:
         hits = _rules_hit(sample)
         if hits:
@@ -243,21 +383,47 @@ def _check_content_rules(fixtures: dict[str, list]) -> list[str]:
     return failures
 
 
-def _check_path_rules(fixtures: dict[str, list]) -> list[str]:
-    expected = ([(s, True) for s in fixtures["path_positive"]]
-                + [(s, False) for s in fixtures["path_negative"]])
+def _check_path_rules(fixtures: dict) -> list[str]:
+    samples: dict[str, str] = fixtures["path"]
+    failures = (_uncovered(_LOCAL_ONLY_PATHS, samples, "path")
+                + _check_own_positive(_LOCAL_ONLY_PATHS, samples, "path"))
+    for variant in fixtures["path_case_variants"]:
+        if not scan_path(variant):
+            failures.append(f"path rule is case-sensitive: missed {variant!r}")
+    for benign in fixtures["path_negative"]:
+        if scan_path(benign):
+            failures.append(f"path rule false positive on {benign!r}")
+    return failures
+
+
+def _check_blob_rules() -> list[str]:
+    """A NUL byte must report the file, not silence the content rules."""
     failures: list[str] = []
-    for sample, should_flag in expected:
-        if bool(scan_path(sample)) != should_flag:
-            verb = "missed" if should_flag else "false positive on"
-            failures.append(f"path rule {verb} {sample!r}")
+    secret = "token = " + "sk-" + "E" * 24
+    laced = ("note" + chr(0) + secret).encode("utf-8")
+    rules = {f.rule for f in scan_blob("probe.bin", laced)}
+    if "unscannable-content" not in rules:
+        failures.append("NUL-carrying blob was not reported as unscannable")
+    if "credential" not in rules:
+        failures.append("a NUL byte still suppresses the content rules")
+    if "credential" not in {f.rule for f in
+                            scan_blob("wide.txt", secret.encode("utf-16-le"))}:
+        failures.append("UTF-16 content is not scanned")
+    if scan_blob("clean.txt", b"nothing to see here"):
+        failures.append("false positive on an ordinary text blob")
     return failures
 
 
 def selftest() -> list[str]:
-    """Prove every rule can fire and can stay silent; empty means it works."""
+    """Prove every detector can fire and can stay silent; empty means it works.
+
+    Covers three properties, not one: every detector has its own positive
+    control, every detector stays silent on its negatives, and no encoding or
+    letter-case spelling of a flagged thing escapes the scan.
+    """
     fixtures = _fixtures()
-    return _check_content_rules(fixtures) + _check_path_rules(fixtures)
+    return (_check_content_rules(fixtures) + _check_path_rules(fixtures)
+            + _check_blob_rules())
 
 
 def _report(findings: list[Finding]) -> str:
