@@ -151,10 +151,18 @@ def _run_quality_gate_json(
         ({}, error_string) on failure — caller MUST check error_info.
     """
     def _call() -> subprocess.CompletedProcess:
+        # cwd=root, not the caller's directory (#35). QG anchors --paths-from
+        # to --root now, so this is belt-and-braces rather than the only
+        # defence -- but it also fixes every *other* cwd-sensitive thing a
+        # subprocess inherits (root-config discovery, git-root detection),
+        # and it costs nothing. Without it, running CK from a second checkout
+        # that held the same relative paths scanned that checkout instead:
+        # same --root, same SHA, 78 spurious high-severity findings.
+        root_str = str(root)
         return subprocess.run(
-            [sys.executable, str(qg), "--root", str(root), "--mode", "audit",
+            [sys.executable, str(qg), "--root", root_str, "--mode", "audit",
              "--json", "--paths-from", str(paths_file)],
-            capture_output=True, timeout=120,
+            capture_output=True, timeout=120, cwd=root_str,
         )
 
     result = retry_call(_call, max_retries=1, base_delay=1.0, transient_exceptions=(OSError, TimeoutError))

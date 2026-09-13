@@ -1413,6 +1413,39 @@ def _run_baseline_mode(gate: "QualityGate", *, allow_ci: bool) -> int:
     return 0 if ok else 1
 
 
+def _paths_from_file(listing: Path, root_dir: Path) -> list[str]:
+    """Read `--paths-from` entries, resolving relative ones against `--root`.
+
+    `--paths-from` carries a root-relative manifest written by a caller that
+    already knows the root -- Cathedral Keeper's integration writes exactly
+    that. Resolving those entries against the *caller's* cwd is what issue #35
+    reported: run from a second populated checkout holding the same relative
+    paths and `get_files_to_check` preferred the cwd candidate, so the same
+    absolute `--root` scanned a different tree and produced findings whose
+    paths could not match the target root's baseline keys.
+
+    Returned absolute, so the cwd-first branch in `get_files_to_check` cannot
+    apply to them. Positional CLI paths keep their cwd-relative meaning: those
+    are typed by a person standing in a directory, and nothing about them is
+    ambiguous.
+
+    An entry that resolves nowhere under the root is dropped here and counted
+    by the caller, because a manifest that resolves to nothing must not read as
+    a clean scan of zero files.
+    """
+    resolved: list[str] = []
+    raw = listing.read_text(encoding="utf-8", errors="ignore")
+    for line in raw.splitlines():
+        entry = line.strip()
+        if not entry:
+            continue
+        candidate = Path(entry)
+        if not candidate.is_absolute():
+            candidate = root_dir / candidate
+        resolved.append(str(candidate.resolve()))
+    return resolved
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Quality Gate - Portable Code Quality Enforcement",
@@ -1456,12 +1489,21 @@ def main():
 
     paths: list[str] = list(args.paths or [])
     if args.paths_from:
-        p = Path(args.paths_from)
-        raw = p.read_text(encoding="utf-8", errors="ignore")
-        for line in raw.splitlines():
-            line = line.strip()
-            if line:
-                paths.append(line)
+        root_dir = gate.root_dir
+        listed = _paths_from_file(Path(args.paths_from), root_dir)
+        # Anchoring to --root closes #35, but it would open a quieter hole if
+        # left there: a manifest whose entries resolve nowhere under the root
+        # now yields zero files, and zero files with explicit paths supplied is
+        # treated as a legitimate docs-only no-op that passes. "The paths did
+        # not resolve" is not "there was nothing to check", so it exits 2.
+        if listed and not any(Path(p).exists() for p in listed):
+            print(f"[QualityGate] --paths-from {args.paths_from}: none of the "
+                  f"{len(listed)} listed path(s) exist under --root "
+                  f"{root_dir}. Entries are resolved against --root, so a "
+                  f"manifest written for another tree resolves to nothing. "
+                  f"First entry tried: {listed[0]}", file=sys.stderr)
+            raise SystemExit(2)
+        paths.extend(listed)
 
     result = gate.run(paths=paths or None, staged_only=args.staged)
 
