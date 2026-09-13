@@ -192,14 +192,41 @@ def test_manifest_json_round_trips(tmp_path):
 
 # ── Review of #40 ───────────────────────────────────────────────────────────
 
-def _backend():
-    """The in-tree PEP 517 backend, imported by path (it is not a package)."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "kp_build_backend", REPO_ROOT / "build_support" / "kp_build_backend.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _backend_sources() -> set[str]:
+    """The staging sources the build backend declares, read without importing.
+
+    Importing it would pull in `setuptools`, which this project does not depend
+    on at runtime and which CI's test environment does not install -- so the
+    import passed on a developer machine and failed in CI with
+    `ModuleNotFoundError: No module named 'setuptools'`. The three tuples are
+    plain literals, so `ast` can read them with no import at all.
+    """
+    import ast
+
+    source = (REPO_ROOT / "build_support" / "kp_build_backend.py").read_text(
+        encoding="utf-8")
+    wanted = {"TREE_SOURCES", "FILE_SOURCES", "DIR_SOURCES"}
+    found: set[str] = set()
+    seen: set[str] = set()
+    for node in ast.parse(source).body:
+        target = _assigned_name(node)
+        if target in wanted:
+            seen.add(target)
+            found.update(ast.literal_eval(node.value))
+    assert seen == wanted, f"backend no longer declares {sorted(wanted - seen)}"
+    return found
+
+
+def _assigned_name(node) -> str | None:
+    import ast
+
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        return node.target.id
+    if isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target = node.targets[0]
+        if isinstance(target, ast.Name):
+            return target.id
+    return None
 
 
 def test_manifest_in_ships_every_source_the_backend_stages():
@@ -215,15 +242,13 @@ def test_manifest_in_ships_every_source_the_backend_stages():
     A static check rather than a build, so it is fast and names the omission.
     The round trip itself is proved in the artifact smoke.
     """
-    backend = _backend()
     manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
     included = {line.split(None, 1)[1].strip().replace("\\", "/")
                 for line in manifest.splitlines()
                 if line.split(None, 1)[:1] in (["graft"], ["include"])
                 and len(line.split(None, 1)) == 2}
 
-    required = ({"build_support"} | set(backend.TREE_SOURCES)
-                | set(backend.FILE_SOURCES) | set(backend.DIR_SOURCES))
+    required = {"build_support"} | _backend_sources()
     assert required <= included, (
         f"MANIFEST.in does not ship {sorted(required - included)} -- the sdist "
         f"would build an incomplete wheel, or fail to build at all")
