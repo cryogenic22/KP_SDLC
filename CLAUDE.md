@@ -31,6 +31,21 @@ implementation agents and reviewers working in this repository.
 - Prefer deterministic checks for blocking decisions. Model review may surface
   candidates, but it cannot silently waive, weaken, approve, or merge.
 
+## Review Convergence And Learning
+
+- Before handoff, authors state change risk, protected invariants, applicable
+  `KP-RV-*` patterns, and negative proof. A reviewer completes the full
+  assurance sweep before publishing consolidated findings.
+- Classify findings as `KNOWN`, `ESCAPED`, `NOVEL`, or `FALSE-POSITIVE`.
+  Reproduce a novel issue before adding it to the review-convergence catalog;
+  every known escape gets an explicit earliest-prevention action. Close each
+  review with the `/close-review-loop` record.
+- Optimize for fewer avoidable review rounds, never for approval rate. New
+  evidence may stop a merge; nits and unrelated future work do not reopen a
+  closed review area.
+- The harness may propose learning changes, but only an independently reviewed
+  PR may alter a catalog entry, gate, threshold, waiver, or merge decision.
+
 ## Context And Memory
 
 - At session start or after compaction, read current Git state, this contract,

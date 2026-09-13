@@ -19,9 +19,9 @@ KP_SDLC
 
 | Subdir | Purpose | Status |
 |---|---|---|
-| `skills/` | `.claude/skills/*` for design-philosophy + coding-discipline | ✅ |
+| `skills/` | `.claude/skills/*` for design philosophy, coding discipline, and review convergence | ✅ |
 | `templates/` | `CLAUDE.md` + `AGENTS.md` + `PULL_REQUEST_TEMPLATE.md` | ✅ |
-| `commands/` | Slash commands (`/principles`, `/review`, `/entropy-check`, `/before-i-commit`) | ✅ |
+| `commands/` | Slash commands including `/review`, `/close-review-loop`, and `/before-i-commit` | ✅ |
 | `decisions/` | ADR templates including the design-philosophy ADR | ✅ |
 | `hooks/` | Pre-commit base config + `red-flag-attestation.sh` + `second_pass_reviewer.py` + `reuse_injector.py` (PreToolUse reuse check, wired via `templates/claude-settings.json.tmpl`) | ✅ |
 | `ci/` | GitHub Actions workflow templates: `quality.yml`, `web.yml`, `eval.yml`, `second-pass-reviewer.yml` | ✅ |
@@ -29,6 +29,20 @@ KP_SDLC
 | `bootstrap.sh` | Idempotent installer | ✅ |
 
 The harness is consumable from any project today.
+
+### Second-pass reviewer operating status
+
+The second-pass workflow is shipped to born repos, but it is **uninspected in
+the KP_SDLC engine repository**: this repository does not run the generated
+`.harness/` / `.claude/skills/` layout and has no recorded live model-review
+event. Its output must not be counted as proof-of-fire or independent approval.
+
+The first pilot is a born repo whose generated workflow paths are checked by
+`sdlc-init/tests/test_executor.py`. It must enable the optional API secret,
+record one exact-SHA review event, and plant delimiter-like text in both the PR
+body and diff without changing the trusted system policy. Until that evidence
+exists, the deterministic path-resolution and request-shape tests are the only
+claims made here.
 
 ## Sources of philosophy
 
