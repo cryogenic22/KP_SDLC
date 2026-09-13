@@ -94,6 +94,15 @@ def test_second_pass_reviewer_uses_handoff_and_trusted_policy():
         assert "--review-contract .claude/skills/review-convergence/SKILL.md" in workflow
         assert '--event "$GITHUB_EVENT_PATH"' in workflow
         assert "base-SHA policy" in workflow
+        assert '--base "$BASE_SHA"' in workflow
+        assert '--head "$HEAD_SHA"' in workflow
+
+        for rel in (
+            ".harness/hooks/second_pass_reviewer.py",
+            ".claude/skills/design-philosophy/SKILL.md",
+            ".claude/skills/review-convergence/SKILL.md",
+        ):
+            assert (t / rel).is_file(), f"workflow policy dependency missing: {rel}"
 
 
 def test_no_active_workflow_carries_placeholder():

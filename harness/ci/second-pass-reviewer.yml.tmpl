@@ -58,10 +58,12 @@ jobs:
         if: steps.keycheck.outputs.has_key == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python .harness/hooks/second_pass_reviewer.py \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
             --principles .claude/skills/design-philosophy/SKILL.md \
             --review-contract .claude/skills/review-convergence/SKILL.md \
             --event "$GITHUB_EVENT_PATH" \

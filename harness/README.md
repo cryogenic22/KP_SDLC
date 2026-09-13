@@ -30,6 +30,20 @@ KP_SDLC
 
 The harness is consumable from any project today.
 
+### Second-pass reviewer operating status
+
+The second-pass workflow is shipped to born repos, but it is **uninspected in
+the KP_SDLC engine repository**: this repository does not run the generated
+`.harness/` / `.claude/skills/` layout and has no recorded live model-review
+event. Its output must not be counted as proof-of-fire or independent approval.
+
+The first pilot is a born repo whose generated workflow paths are checked by
+`sdlc-init/tests/test_executor.py`. It must enable the optional API secret,
+record one exact-SHA review event, and plant delimiter-like text in both the PR
+body and diff without changing the trusted system policy. Until that evidence
+exists, the deterministic path-resolution and request-shape tests are the only
+claims made here.
+
 ## Sources of philosophy
 
 The `design-philosophy` skill synthesises four sources, all credited:
